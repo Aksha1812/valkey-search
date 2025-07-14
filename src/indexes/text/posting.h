@@ -24,9 +24,50 @@ A PositionIterator is provided to iterate over the positions of an individual Ke
 */
 
 #include "src/indexes/text/lexer.h"
-#include "src/text/text.h"
+#include "src/indexes/text/text.h"
+#include <span>
+#include <memory>
+#include <cstdint>
 
 namespace valkey_search::text {
+
+// Field mask interface optimized for different field counts
+class FieldMask {
+public:
+  static std::unique_ptr<FieldMask> Create(size_t num_fields);
+  virtual ~FieldMask() = default;
+  virtual void SetField(size_t field_index) = 0;
+  virtual void ClearField(size_t field_index) = 0;
+  virtual bool HasField(size_t field_index) const = 0;
+  virtual void SetAllFields() = 0;
+  virtual void ClearAllFields() = 0;
+  virtual uint64_t AsUint64() const = 0;
+  virtual std::unique_ptr<FieldMask> Clone() const = 0;
+  virtual size_t MaxFields() const = 0;
+};
+
+// Template implementation for field mask with optimized storage
+template<typename MaskType, size_t MAX_FIELDS>
+class FieldMaskImpl : public FieldMask {
+public:
+  explicit FieldMaskImpl(size_t num_fields = MAX_FIELDS);
+  void SetField(size_t field_index) override;
+  void ClearField(size_t field_index) override;
+  bool HasField(size_t field_index) const override;
+  void SetAllFields() override;
+  void ClearAllFields() override;
+  uint64_t AsUint64() const override;
+  std::unique_ptr<FieldMask> Clone() const override;
+  size_t MaxFields() const override { return MAX_FIELDS; }
+private:
+  MaskType mask_;
+  size_t num_fields_;
+};
+
+// Optimized implementations for different field counts
+using SingleFieldMask = FieldMaskImpl<bool, 1>;
+using ByteFieldMask = FieldMaskImpl<uint8_t, 8>;
+using Uint64FieldMask = FieldMaskImpl<uint64_t, 64>;
 
 //
 // this is the logical view of a posting. 
@@ -87,11 +128,11 @@ struct Postings {
   };
 
   // The Position Iterator
-  struct KeyIterator {
+  struct PositionIterator {
     // Is valid?
     bool IsValid() const;
 
-    // Advance to next key
+    // Advance to next position
     void NextPosition();
 
     // Skip forward to next position that is equal to or greater than.
@@ -100,8 +141,10 @@ struct Postings {
 
     // Get Current Position
     const Position& GetPosition() const;
-  };
-
+    
+    // Get field mask for current position
+    uint64_t GetFieldMask() const;
+    
 };
 
 }  // namespace valkey_search::text
