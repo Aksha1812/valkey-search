@@ -1,5 +1,12 @@
-#ifndef _VALKEY_SEARCH_INDEXES_TEXT_POSTING_H_
-#define _VALKEY_SEARCH_INDEXES_TEXT_POSTING_H_
+/*
+ * Copyright (c) 2025, valkey-search contributors
+ * All rights reserved.
+ * SPDX-License-Identifier: BSD 3-Clause
+ *
+ */
+
+#ifndef VALKEYSEARCH_SRC_INDEXES_TEXT_POSTING_H_
+#define VALKEYSEARCH_SRC_INDEXES_TEXT_POSTING_H_
 
 /*
 
@@ -23,13 +30,20 @@ A PositionIterator is provided to iterate over the positions of an individual Ke
 
 */
 
-#include "src/indexes/text/lexer.h"
-#include "src/indexes/text/text.h"
+// Will add later when lexer and text are implemented so that posting_test.cc works 
+// #include "src/indexes/text/lexer.h"
+// #include "src/indexes/text/text.h"
 #include <span>
 #include <memory>
 #include <cstdint>
+#include <string>
 
 namespace valkey_search::text {
+
+// Will remove later when lexer and text are implemented so that posting_test.cc works 
+// Basic type definitions needed for posting system
+using Key = std::string;
+using Position = uint32_t;
 
 // Field mask interface optimized for different field counts
 class FieldMask {
@@ -41,6 +55,7 @@ public:
   virtual bool HasField(size_t field_index) const = 0;
   virtual void SetAllFields() = 0;
   virtual void ClearAllFields() = 0;
+  virtual size_t CountSetFields() const = 0;
   virtual uint64_t AsUint64() const = 0;
   virtual std::unique_ptr<FieldMask> Clone() const = 0;
   virtual size_t MaxFields() const = 0;
@@ -56,6 +71,7 @@ public:
   bool HasField(size_t field_index) const override;
   void SetAllFields() override;
   void ClearAllFields() override;
+  size_t CountSetFields() const override;
   uint64_t AsUint64() const override;
   std::unique_ptr<FieldMask> Clone() const override;
   size_t MaxFields() const override { return MAX_FIELDS; }
@@ -86,12 +102,29 @@ struct Postings {
   // The "num_text_fields" entry identifies how many bits of the field-mask are required
   // and is used to select the representation.
   Postings(bool save_positions, size_t num_text_fields);
+  
+  // Destructor
+  ~Postings();
+  
+  // Copy constructor and assignment operator
+  Postings(const Postings& other);
+  Postings& operator=(const Postings& other);
 
   // Are there any postings in this object?
   bool IsEmpty() const;
 
-  // Add a posting
-  void SetKey(const Key& key, std::span<Position> positions);
+  // Add a key for boolean search (save_positions=false mode only)
+  // Sets document presence with assumed position 0 and empty field mask
+  void SetKey(const Key& key);
+  
+  // Add a posting entry for a specific position and field
+  void AddPositionForField(const Key& key, Position position, size_t field_index);
+  
+  // Add multiple posting entries for specific positions and fields (replaces existing positions)
+  void SetKeyWithFieldPositions(const Key& key, std::span<std::pair<Position, size_t>> position_field_pairs);
+  
+  // Update key by adding/merging positions with existing ones (preserves existing positions)
+  void UpdateKeyWithFieldPositions(const Key& key, std::span<std::pair<Position, size_t>> position_field_pairs);
 
   // Remove a key and all positions for it
   void RemoveKey(const Key& key);
@@ -101,6 +134,9 @@ struct Postings {
 
   // Total number of postings for all keys
   size_t GetPostingCount() const;
+  
+  // Total frequency of the term across all keys and positions
+  size_t GetTotalTermFrequency() const;
 
   // Defrag this contents of this object. Returns the updated "this" pointer.
   Postings *Defrag();
@@ -144,7 +180,11 @@ struct Postings {
     
     // Get field mask for current position
     uint64_t GetFieldMask() const;
-    
+  };
+
+private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace valkey_search::text

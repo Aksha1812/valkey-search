@@ -18,7 +18,4 @@
     ],
     "clangd.inactiveRegions.useBackgroundHighlight": true,
     "clangd.enableCodeCompletion": true,
-    "files.associations": {
-        "string_view": "cpp"
-    }
 }

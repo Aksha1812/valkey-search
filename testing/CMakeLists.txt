@@ -364,6 +364,17 @@ target_link_libraries(vector_externalizer_test PUBLIC module)
 target_link_libraries(vector_externalizer_test PUBLIC valkey_module)
 finalize_test_flags(vector_externalizer_test)
 
+set(SRCS_POSTING_TEST ${CMAKE_CURRENT_LIST_DIR}/posting_test.cc
+                      ${CMAKE_SOURCE_DIR}/src/indexes/text/posting.cc)
+
+add_executable(posting_test ${SRCS_POSTING_TEST})
+target_include_directories(posting_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+target_include_directories(posting_test PUBLIC ${CMAKE_SOURCE_DIR})
+target_link_libraries(posting_test PUBLIC testing_common)
+target_link_libraries(posting_test PUBLIC string_interning)
+target_link_libraries(posting_test PUBLIC utils)
+finalize_test_flags(posting_test)
+
 set(SRCS_ACL_TEST ${CMAKE_CURRENT_LIST_DIR}/acl_test.cc)
 add_executable(acl_test ${SRCS_ACL_TEST})
 target_include_directories(acl_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
