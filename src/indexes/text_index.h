@@ -1,29 +1,50 @@
-#ifndef VALKEY_SEARCH_INDEXES_TEXT_TEXT_H_
-#define VALKEY_SEARCH_INDEXES_TEXT_TEST_H_
+#ifndef VALKEY_SEARCH_INDEXES_TEXT_INDEX_H_
+#define VALKEY_SEARCH_INDEXES_TEXT_INDEX_H_
 
-#include <concepts>
 #include <memory>
+#include <optional>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
+#include "src/indexes/text/radix_tree.h"
+#include "src/indexes/text/posting.h"
 #include "src/utils/string_interning.h"
+#include "src/index_schema.pb.h"
 
 namespace valkey_search {
 namespace indexes {
 
-  using Key = vmsdk::InternedStringPtr;
-  using Position = uint32_t;
+using Key = vmsdk::InternedStringPtr;
+using Position = uint32_t;
 
-  // Each text field is assigned a unique number within the containing index, this is used
-  // by the Postings object to identify fields.
-  size_t text_field_number;
-  std::shared_ptr<TextIndex> text_
+// Forward declaration for Postings
+namespace text {
+struct Postings;
+}
 
+class TextIndex {
+ public:
+  // Constructor - initializes complete text processing pipeline
+  explicit TextIndex(const data_model::TextIndex& text_index_proto);
+  ~TextIndex() = default;
 
+  // Core radix tree management methods
+  void InitializeRadixTree();
+  
+  // Word processing methods for radix tree operations
+  absl::Status AddWordToTree(absl::string_view word, const InternedStringPtr& key, Position position);
+  absl::Status RemoveWordFromTree(absl::string_view word, const InternedStringPtr& key);
+  
+  // Access methods for radix tree
+  text::RadixTree<std::unique_ptr<text::Postings>, false>* GetPrefixTree() const { 
+    return prefix_tree_.get(); 
+  }
 
-struct TextIndex {
-  // Constructor
-  Text(const data_model& text_index_proto);
-
-  text::RadixTree prefix_;
+ private:
+  // Internal radix tree operations
+  void UpdatePositionMap(const InternedStringPtr& key, 
+                        const std::vector<Position>& positions);
 
   //
   // The main query data structure maps Words into Postings objects. This
@@ -35,26 +56,17 @@ struct TextIndex {
   // thus this object becomes responsible for cross-tree locking issues.
   // Multiple locking strategies are possible. TBD (a shared-ed word lock table should work well)
   //
-  std::shared_ptr<RadixTree<std::unique_ptr<Postings *>, false>>> prefix_;
-  std::optional<text::RadixTree> suffix_;
+  std::unique_ptr<text::RadixTree<std::unique_ptr<text::Postings>, false>> prefix_tree_;
+  std::optional<text::RadixTree<std::unique_ptr<text::Postings>, true>> suffix_tree_;
 
-  absl::hashmap<Key, text::RadixTree> reverse_;
+  // Key to position mapping - placeholder for now
+  absl::flat_hash_map<Key, std::vector<Position>> key_position_map_;
 
-  absl::hashset<Key> untracked_keys_;
-};
-
-struct IndexSchemaText{
-  //
-  // This is the main index of all Text fields in this index schema
-  //
-  TextIndex corpus_;
-  //
-  // To support the Delete record and the post-filtering case, there is a separate
-  // table of postings that are indexed by Key.
-  //
-  // This object must also ensure that updates of this object are multi-thread safe.
-  //
-  absl::flat_hash_map<Key, TextIndex>> by_key_;
+  // Set of untracked keys for negation support
+  absl::flat_hash_set<Key> untracked_keys_;
+  
+  // Mutex for thread safety
+  mutable absl::Mutex mutex_;
 };
 
 }  // namespace indexes

@@ -47,6 +47,7 @@ message Index {
     VectorIndex vector_index = 1;
     NumericIndex numeric_index = 2;
     TagIndex tag_index = 3;
+    TextIndex text_index = 4;
   }
 }
 
@@ -95,4 +96,13 @@ message HNSWAlgorithm {
 
 message FlatAlgorithm {
   uint32 block_size = 1;
+}
+
+message TextIndex {
+  Language language = 1;
+  bool case_sensitive = 2;
+  string separator = 3;
+  bool enable_stemming = 4;
+  repeated string stop_words = 5;
+  bool handle_punctuation = 6;
 }

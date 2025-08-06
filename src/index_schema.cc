@@ -36,6 +36,7 @@
 #include "src/indexes/index_base.h"
 #include "src/indexes/numeric.h"
 #include "src/indexes/tag.h"
+#include "src/indexes/text.h"
 #include "src/indexes/vector_base.h"
 #include "src/indexes/vector_flat.h"
 #include "src/indexes/vector_hnsw.h"
@@ -56,6 +57,49 @@
 #include "vmsdk/src/valkey_module_api/valkey_module.h"
 
 namespace valkey_search {
+
+// TextIndexSchema class - manages schema-level properties for text indexing
+class TextIndexSchema {
+ public:
+  explicit TextIndexSchema(const data_model::TextIndex& text_index_proto)
+      : language_(text_index_proto.language()),
+        case_sensitive_(text_index_proto.case_sensitive()),
+        separator_(text_index_proto.separator()),
+        enable_stemming_(text_index_proto.enable_stemming()),
+        handle_punctuation_(text_index_proto.handle_punctuation()) {
+    
+    // Copy stop words
+    for (const auto& stop_word : text_index_proto.stop_words()) {
+      stop_words_.emplace_back(stop_word);
+    }
+    
+    // Instantiate the TextIndex object
+    text_index_ = std::make_unique<indexes::TextIndex>(text_index_proto);
+  }
+
+  // Getters for schema-level properties
+  data_model::Language GetLanguage() const { return language_; }
+  bool IsCaseSensitive() const { return case_sensitive_; }
+  const std::string& GetSeparator() const { return separator_; }
+  bool IsStemmingEnabled() const { return enable_stemming_; }
+  bool HandlesPunctuation() const { return handle_punctuation_; }
+  const std::vector<std::string>& GetStopWords() const { return stop_words_; }
+  
+  // Access to the underlying TextIndex object
+  indexes::TextIndex* GetTextIndex() const { return text_index_.get(); }
+
+ private:
+  // Schema-level properties
+  data_model::Language language_;
+  bool case_sensitive_;
+  std::string separator_;
+  bool enable_stemming_;
+  bool handle_punctuation_;
+  std::vector<std::string> stop_words_;
+  
+  // The actual TextIndex instance
+  std::unique_ptr<indexes::TextIndex> text_index_;
+};
 
 LogLevel GetLogSeverity(bool ok) { return ok ? DEBUG : WARNING; }
 
@@ -81,6 +125,9 @@ absl::StatusOr<std::shared_ptr<indexes::IndexBase>> IndexFactory(
     }
     case data_model::Index::IndexTypeCase::kNumericIndex: {
       return std::make_shared<indexes::Numeric>(index.numeric_index());
+    }
+    case data_model::Index::IndexTypeCase::kTextIndex: {
+      return std::make_shared<indexes::Text>(index.text_index(), index_schema);
     }
     case data_model::Index::IndexTypeCase::kVectorIndex: {
       switch (index.vector_index().algorithm_case()) {
@@ -211,6 +258,16 @@ IndexSchema::IndexSchema(ValkeyModuleCtx *ctx,
     }
   }
   stats_.document_cnt = index_schema_proto.stats().documents_count();
+
+  // Initialize shared TextIndexSchema if any text fields exist
+  for (const auto &attribute : index_schema_proto.attributes()) {
+    if (attribute.index().index_type_case() == data_model::Index::IndexTypeCase::kTextIndex) {
+      if (!text_index_schema_) {
+        text_index_schema_ = std::make_unique<TextIndexSchema>(attribute.index().text_index());
+      }
+      break;
+    }
+  }
 }
 
 absl::Status IndexSchema::Init(ValkeyModuleCtx *ctx) {
@@ -445,6 +502,10 @@ void IndexSchema::ProcessAttributeMutation(
           break;
         case indexes::IndexerType::kTag:
           Metrics::GetStats().ingest_field_tag++;
+          break;
+        case indexes::IndexerType::kText:
+          // TODO: Add text field metrics if needed
+          // Metrics::GetStats().ingest_field_text++;
           break;
         default:
           // Shouldn't happen

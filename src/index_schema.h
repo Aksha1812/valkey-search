@@ -42,6 +42,9 @@
 #include "vmsdk/src/valkey_module_api/valkey_module.h"
 
 namespace valkey_search {
+
+class TextIndexSchema;
+
 bool ShouldBlockClient(ValkeyModuleCtx *ctx, bool inside_multi_exec,
                        bool from_backfill);
 
@@ -159,6 +162,9 @@ class IndexSchema : public KeyspaceEventSubscription,
   void SubscribeToVectorExternalizer(absl::string_view attribute_identifier,
                                      indexes::VectorBase *vector_index);
 
+  // Access to shared TextIndexSchema
+  TextIndexSchema* GetTextIndexSchema() const { return text_index_schema_.get(); }
+
  protected:
   IndexSchema(ValkeyModuleCtx *ctx,
               const data_model::IndexSchema &index_schema_proto,
@@ -205,6 +211,9 @@ class IndexSchema : public KeyspaceEventSubscription,
   void VectorExternalizer(const InternedStringPtr &key,
                           absl::string_view attribute_identifier,
                           vmsdk::UniqueValkeyString &record);
+
+  // Shared TextIndexSchema for the entire IndexSchema
+  std::unique_ptr<TextIndexSchema> text_index_schema_;
 
   mutable Stats stats_;
 

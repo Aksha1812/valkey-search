@@ -30,12 +30,38 @@
 #ifndef VALKEYSEARCH_SRC_INDEXES_TEXT_H_
 #define VALKEYSEARCH_SRC_INDEXES_TEXT_H_
 
+#include <memory>
+
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "src/indexes/index_base.h"
+#include "src/indexes/text_index.h"
+#include "src/index_schema.pb.h"
+#include "src/utils/string_interning.h"
+#include "src/query/predicate.h"
+#include "vmsdk/src/valkey_module_api/valkey_module.h"
+
+namespace valkey_search {
+class IndexSchema;
+}
 
 namespace valkey_search::indexes {
 
+// Position type for word positions in text
+using Position = uint32_t;
+
+// Forward declarations
+namespace query {
+class TextPredicate;
+}
+
 class Text : public IndexBase {
  public:
-  explicit Text(const data_model::TextIndex& text_index_proto);
+  explicit Text(const data_model::TextIndex& text_index_proto, IndexSchema* schema);
   absl::StatusOr<bool> AddRecord(const InternedStringPtr& key,
                                  absl::string_view data) override
       ABSL_LOCKS_EXCLUDED(index_mutex_);
@@ -46,23 +72,16 @@ class Text : public IndexBase {
   absl::StatusOr<bool> ModifyRecord(const InternedStringPtr& key,
                                     absl::string_view data) override
       ABSL_LOCKS_EXCLUDED(index_mutex_);
-  int RespondWithInfo(RedisModuleCtx* ctx) const override;
+  int RespondWithInfo(ValkeyModuleCtx* ctx) const override;
   bool IsTracked(const InternedStringPtr& key) const override;
-  absl::Status SaveIndex(RDBOutputStream& rdb_stream) const override {
+  absl::Status SaveIndex(RDBChunkOutputStream chunked_out) const override {
     return absl::OkStatus();
   }
-
-  private:
-  // Each text field is assigned a unique number within the containing index, this is used
-  // by the Postings object to identify fields.
-  size_t text_field_number;
-  std::shared_ptr<TextIndex> text_;
-
 
   inline void ForEachTrackedKey(
       absl::AnyInvocable<void(const InternedStringPtr&)> fn) const override {
     absl::MutexLock lock(&index_mutex_);
-    for (const auto& [key, _] : tracked_tags_by_keys_) {
+    for (const auto& [key, _] : tracked_keys_) {
       fn(key);
     }
   }
@@ -94,6 +113,18 @@ class Text : public IndexBase {
       bool negate) const ABSL_NO_THREAD_SAFETY_ANALYSIS;
 
  private:
+  // Reference to parent IndexSchema for shared TextIndex access
+  IndexSchema* index_schema_;
+  
+  // Each text field is assigned a unique number within the containing index
+  size_t text_field_number_;
+  
+  // Track keys and their raw values for text processing
+  InternedStringMap<InternedStringPtr> tracked_keys_ ABSL_GUARDED_BY(index_mutex_);
+  
+  // Untracked keys for negation support  
+  InternedStringSet untracked_keys_ ABSL_GUARDED_BY(index_mutex_);
+
   mutable absl::Mutex index_mutex_;
 };
 }  // namespace valkey_search::indexes
