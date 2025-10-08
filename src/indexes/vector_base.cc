@@ -305,24 +305,35 @@ absl::StatusOr<bool> VectorBase::RemoveRecord(
 
 absl::StatusOr<std::optional<uint64_t>> VectorBase::UnTrackKey(
     const InternedStringPtr &key) {
+  VMSDK_LOG(WARNING, nullptr) << "VectorBase::UnTrackKey called for key: '" 
+                              << key->Str() << "'";
   if (key->Str().empty()) {
+    VMSDK_LOG(WARNING, nullptr) << "UnTrackKey: empty key, returning nullopt";
     return std::nullopt;
   }
   absl::WriterMutexLock lock(&key_to_metadata_mutex_);
   auto it = tracked_metadata_by_key_.find(key);
   if (it == tracked_metadata_by_key_.end()) {
+    VMSDK_LOG(WARNING, nullptr) << "UnTrackKey: key not found in tracked_metadata_by_key_: '" 
+                                << key->Str() << "'";
     return std::nullopt;
   }
   auto id = it->second.internal_id;
+  VMSDK_LOG(WARNING, nullptr) << "UnTrackKey: calling UnTrackVector for internal_id: " 
+                              << id << ", key: '" << key->Str() << "'";
   UnTrackVector(id);
   tracked_metadata_by_key_.erase(it);
   auto key_by_internal_id_it = key_by_internal_id_.find(id);
   if (key_by_internal_id_it == key_by_internal_id_.end()) {
+    VMSDK_LOG(WARNING, nullptr) << "UnTrackKey: key not found in key_by_internal_id_ for internal_id: " 
+                                << id << ", key: '" << key->Str() << "'";
     return absl::InvalidArgumentError(
         "Error while untracking key - key was not found in key_by_internal_id_ "
         "but in internal_by_key_");
   }
   key_by_internal_id_.erase(key_by_internal_id_it);
+  VMSDK_LOG(WARNING, nullptr) << "UnTrackKey: successfully untracked key: '" 
+                              << key->Str() << "', internal_id: " << id;
   return id;
 }
 

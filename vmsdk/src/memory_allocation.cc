@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 
 namespace vmsdk {
 
@@ -57,9 +58,15 @@ void ReportAllocMemorySize(uint64_t size) {
   vmsdk::used_memory_bytes.fetch_add(size, std::memory_order_relaxed);
 
   memory_delta += static_cast<int64_t>(size);
+  
+  // Debug statement for memory allocation
+  fprintf(stderr, "[MEMORY_DEBUG] ALLOC: size=%lu bytes, total_used=%lu bytes, delta=%ld\n", 
+          size, used_memory_bytes.load(), memory_delta);
 }
 
 void ReportFreeMemorySize(uint64_t size) {
+  uint64_t old_used = used_memory_bytes.load();
+  
   if (size > used_memory_bytes) {
     vmsdk::used_memory_bytes.store(0, std::memory_order_relaxed);
   } else {
@@ -67,6 +74,10 @@ void ReportFreeMemorySize(uint64_t size) {
   }
 
   memory_delta -= static_cast<int64_t>(size);
+  
+  // Debug statement for memory deallocation
+  fprintf(stderr, "[MEMORY_DEBUG] FREE: size=%lu bytes, old_used=%lu bytes, new_used=%lu bytes, delta=%ld\n", 
+          size, old_used, used_memory_bytes.load(), memory_delta);
 }
 
 int64_t GetMemoryDelta() { return memory_delta; }

@@ -6,6 +6,7 @@
  */
 
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <new>
@@ -87,7 +88,11 @@ void* PerformAndTrackMalloc(size_t size, void* (*malloc_fn)(size_t),
                             size_t (*malloc_size_fn)(void*)) {
   void* ptr = malloc_fn(size);
   if (ptr != nullptr) {
-    ReportAllocMemorySize(malloc_size_fn(ptr));
+    size_t actual_size = malloc_size_fn(ptr);
+    ReportAllocMemorySize(actual_size);
+    // Debug statement for malloc wrapper
+    fprintf(stderr, "[MEMORY_DEBUG] MALLOC_WRAPPER: requested=%zu, actual=%zu, ptr=%p\n", 
+            size, actual_size, ptr);
   }
   return ptr;
 }
@@ -96,13 +101,20 @@ void* PerformAndTrackCalloc(size_t n, size_t size,
                             size_t (*malloc_size_fn)(void*)) {
   void* ptr = calloc_fn(n, size);
   if (ptr != nullptr) {
-    ReportAllocMemorySize(malloc_size_fn(ptr));
+    size_t actual_size = malloc_size_fn(ptr);
+    ReportAllocMemorySize(actual_size);
+    // Debug statement for calloc wrapper
+    fprintf(stderr, "[MEMORY_DEBUG] CALLOC_WRAPPER: requested=%zu*%zu=%zu, actual=%zu, ptr=%p\n", 
+            n, size, n*size, actual_size, ptr);
   }
   return ptr;
 }
 void PerformAndTrackFree(void* ptr, void (*free_fn)(void*),
                          size_t (*malloc_size_fn)(void*)) {
-  ReportFreeMemorySize(malloc_size_fn(ptr));
+  size_t size = malloc_size_fn(ptr);
+  ReportFreeMemorySize(size);
+  // Debug statement for free wrapper
+  fprintf(stderr, "[MEMORY_DEBUG] FREE_WRAPPER: size=%zu, ptr=%p\n", size, ptr);
   free_fn(ptr);
 }
 void* PerformAndTrackRealloc(void* ptr, size_t size,
@@ -114,10 +126,14 @@ void* PerformAndTrackRealloc(void* ptr, size_t size,
   }
   void* new_ptr = realloc_fn(ptr, size);
   if (new_ptr != nullptr) {
+    size_t new_size = malloc_size_fn(new_ptr);
     if (ptr != nullptr) {
       ReportFreeMemorySize(old_size);
     }
-    ReportAllocMemorySize(malloc_size_fn(new_ptr));
+    ReportAllocMemorySize(new_size);
+    // Debug statement for realloc wrapper
+    fprintf(stderr, "[MEMORY_DEBUG] REALLOC_WRAPPER: old_ptr=%p, old_size=%zu, new_ptr=%p, requested=%zu, actual=%zu\n", 
+            ptr, old_size, new_ptr, size, new_size);
   }
   return new_ptr;
 }
@@ -126,7 +142,11 @@ void* PerformAndTrackAlignedAlloc(size_t align, size_t size,
                                   size_t (*malloc_size_fn)(void*)) {
   void* ptr = aligned_alloc_fn(align, size);
   if (ptr != nullptr) {
-    ReportAllocMemorySize(malloc_size_fn(ptr));
+    size_t actual_size = malloc_size_fn(ptr);
+    ReportAllocMemorySize(actual_size);
+    // Debug statement for aligned alloc wrapper
+    fprintf(stderr, "[MEMORY_DEBUG] ALIGNED_ALLOC_WRAPPER: align=%zu, requested=%zu, actual=%zu, ptr=%p\n", 
+            align, size, actual_size, ptr);
   }
   return ptr;
 }

@@ -29,26 +29,57 @@
 
 #include "memory_tracker.h"
 
+#include <cstdio>
 #include "vmsdk/src/memory_allocation.h"
 
 MemoryScope::MemoryScope(MemoryPool& pool)
-    : target_pool_(pool), baseline_memory_(vmsdk::GetMemoryDelta()) {}
+    : target_pool_(pool), baseline_memory_(vmsdk::GetMemoryDelta()) {
+  // Debug statement for memory scope creation
+  fprintf(stderr, "[MEMORY_DEBUG] MemoryScope created: baseline_memory=%ld, pool_usage=%ld\n", 
+          baseline_memory_, target_pool_.GetUsage());
+}
 
 IsolatedMemoryScope::IsolatedMemoryScope(MemoryPool& pool)
-    : MemoryScope(pool) {}
+    : MemoryScope(pool) {
+  // Debug statement for isolated memory scope creation
+  fprintf(stderr, "[MEMORY_DEBUG] IsolatedMemoryScope created: baseline_memory=%ld\n", 
+          baseline_memory_);
+}
 
 IsolatedMemoryScope::~IsolatedMemoryScope() {
   int64_t current_delta = vmsdk::GetMemoryDelta();
   int64_t net_change = current_delta - baseline_memory_;
+  
+  // Debug statement for isolated memory scope destruction
+  fprintf(stderr, "[MEMORY_DEBUG] IsolatedMemoryScope destroyed: baseline=%ld, current_delta=%ld, net_change=%ld, pool_before=%ld\n", 
+          baseline_memory_, current_delta, net_change, target_pool_.GetUsage());
+  
   target_pool_.Add(net_change);
 
   vmsdk::SetMemoryDelta(baseline_memory_);
+  
+  // Debug statement after pool update
+  fprintf(stderr, "[MEMORY_DEBUG] IsolatedMemoryScope: pool_after=%ld, reset_delta_to=%ld\n", 
+          target_pool_.GetUsage(), baseline_memory_);
 }
 
-NestedMemoryScope::NestedMemoryScope(MemoryPool& pool) : MemoryScope(pool) {}
+NestedMemoryScope::NestedMemoryScope(MemoryPool& pool) : MemoryScope(pool) {
+  // Debug statement for nested memory scope creation
+  fprintf(stderr, "[MEMORY_DEBUG] NestedMemoryScope created: baseline_memory=%ld\n", 
+          baseline_memory_);
+}
 
 NestedMemoryScope::~NestedMemoryScope() {
   int64_t current_delta = vmsdk::GetMemoryDelta();
   int64_t net_change = current_delta - baseline_memory_;
+  
+  // Debug statement for nested memory scope destruction
+  fprintf(stderr, "[MEMORY_DEBUG] NestedMemoryScope destroyed: baseline=%ld, current_delta=%ld, net_change=%ld, pool_before=%ld\n", 
+          baseline_memory_, current_delta, net_change, target_pool_.GetUsage());
+  
   target_pool_.Add(net_change);
+  
+  // Debug statement after pool update (delta not reset in nested scope)
+  fprintf(stderr, "[MEMORY_DEBUG] NestedMemoryScope: pool_after=%ld, delta_unchanged=%ld\n", 
+          target_pool_.GetUsage(), current_delta);
 }

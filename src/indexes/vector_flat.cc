@@ -92,8 +92,19 @@ bool VectorFlat<T>::IsVectorMatch(uint64_t internal_id,
 
 template <typename T>
 void VectorFlat<T>::UnTrackVector(uint64_t internal_id) {
+  VMSDK_LOG(WARNING, nullptr) << "VectorFlat::UnTrackVector called for internal_id: " 
+                              << internal_id << ", tracked_vectors size before: " 
+                              << tracked_vectors_.size();
   absl::MutexLock lock(&tracked_vectors_mutex_);
-  tracked_vectors_.erase(internal_id);
+  auto it = tracked_vectors_.find(internal_id);
+  if (it != tracked_vectors_.end()) {
+    VMSDK_LOG(WARNING, nullptr) << "Removing tracked vector for internal_id: " 
+                                << internal_id << ", vector string: '" 
+                                << it->second->Str() << "'";
+    tracked_vectors_.erase(it);
+  } else {
+    VMSDK_LOG(WARNING, nullptr) << "Vector not found for internal_id: " << internal_id;
+  }
 }
 
 template <typename T>

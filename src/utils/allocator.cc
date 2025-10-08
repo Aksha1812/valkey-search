@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <map>
 #include <memory>
 #include <utility>
@@ -113,6 +114,10 @@ char *FixedSizeAllocator::Allocate() {
   current_chunk_->free_list.pop();
   ++active_allocations_;
 
+  // Debug statement for allocator allocation
+  fprintf(stderr, "[MEMORY_DEBUG] ALLOCATOR_ALLOC: size=%zu, ptr=%p, active_allocations=%zu, chunk=%p\n", 
+          size_, ptr, active_allocations_, current_chunk_);
+
   HandleChunkEntryUsageChange(current_chunk_, old_free_group);
   if (!current_chunk_) {
     SelectCurrentChunk();
@@ -159,6 +164,12 @@ void FixedSizeAllocator::SelectCurrentChunk() {
 
 void FixedSizeAllocator::AllocateChunk() {
   current_chunk_ = new AllocatorChunk(this, size_);
+  
+  // Debug statement for chunk allocation
+  fprintf(stderr, "[MEMORY_DEBUG] ALLOCATOR_NEW_CHUNK: size=%zu, chunk=%p, entries=%zu, total_size=%zu\n", 
+          size_, current_chunk_, current_chunk_->entries_in_chunk, 
+          BufferSize(current_chunk_->entries_in_chunk, size_));
+  
   chunks_grouped_by_free_entries_[CalcChunkFreeGroup(
                                       current_chunk_->entries_in_chunk)]
       .PushBack(current_chunk_);
@@ -169,10 +180,18 @@ void FixedSizeAllocator::Free(AllocatorChunk *chunk, char *ptr) {
     absl::MutexLock lock(&mutex_);
     --active_allocations_;
 
+    // Debug statement for allocator free
+    fprintf(stderr, "[MEMORY_DEBUG] ALLOCATOR_FREE: size=%zu, ptr=%p, active_allocations=%zu, chunk=%p\n", 
+            size_, ptr, active_allocations_, chunk);
+
     int free_group = CalcChunkFreeGroup(chunk->free_list.size());
     chunk->free_list.push(ptr);
     HandleChunkEntryUsageChange(chunk, free_group);
     if (chunk->free_list.size() == chunk->entries_in_chunk) {
+      // Debug statement for chunk deletion
+      fprintf(stderr, "[MEMORY_DEBUG] ALLOCATOR_DELETE_CHUNK: size=%zu, chunk=%p, entries=%zu\n", 
+              size_, chunk, chunk->entries_in_chunk);
+      
       chunks_grouped_by_free_entries_[CalcChunkFreeGroup(
                                           chunk->free_list.size())]
           .Remove(chunk);
@@ -200,13 +219,24 @@ AllocatorChunk::AllocatorChunk(Allocator *allocator, size_t size)
       data(std::unique_ptr<char[]>(
           new char[BufferSize(entries_in_chunk, size)])),
       allocator(allocator) {
+  
+  // Debug statement for chunk construction
+  fprintf(stderr, "[MEMORY_DEBUG] ALLOCATOR_CHUNK_CONSTRUCT: chunk=%p, size=%zu, entries=%zu, buffer_size=%zu, data=%p\n", 
+          this, size, entries_in_chunk, BufferSize(entries_in_chunk, size), data.get());
+  
   for (size_t i = 0; i < entries_in_chunk; ++i) {
     free_list.push(data.get() + i * size);
   }
   chunk_tracker.Track(this);
 }
 
-AllocatorChunk::~AllocatorChunk() { chunk_tracker.Untrack(this); }
+AllocatorChunk::~AllocatorChunk() { 
+  // Debug statement for chunk destruction
+  fprintf(stderr, "[MEMORY_DEBUG] ALLOCATOR_CHUNK_DESTRUCT: chunk=%p, entries=%zu, data=%p\n", 
+          this, entries_in_chunk, data.get());
+  
+  chunk_tracker.Untrack(this); 
+}
 
 bool Allocator::Free(char *ptr) {
   auto chunk = chunk_tracker.FindChunk(ptr);

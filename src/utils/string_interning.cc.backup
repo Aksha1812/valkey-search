@@ -127,7 +127,6 @@ std::shared_ptr<InternedString> StringInternStore::InternImpl(
     interned_string =
         std::shared_ptr<InternedString>(new InternedString(str, true));
   }
-  // COMMENTED OUT: Data structure operation that causes fragmentation
   str_to_interned_.insert({*interned_string, interned_string});
   
   VMSDK_LOG(WARNING, nullptr) << "Inserted new interned string: '" << str 

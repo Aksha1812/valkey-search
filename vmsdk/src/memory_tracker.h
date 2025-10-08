@@ -31,18 +31,31 @@
 #define VMSDK_SRC_MEMORY_TRACKER_H_
 
 #include <atomic>
+#include <cstdio>
 
 #include "vmsdk/src/utils.h"
 
 class MemoryPool {
  public:
-  explicit MemoryPool(int64_t initial_value = 0) : counter_(initial_value) {}
+  explicit MemoryPool(int64_t initial_value = 0) : counter_(initial_value) {
+    // Debug statement for memory pool creation
+    fprintf(stderr, "[MEMORY_DEBUG] MemoryPool created: initial_value=%ld\n", initial_value);
+  }
 
   int64_t GetUsage() const { return counter_.load(); }
 
-  void Add(int64_t delta) { counter_.fetch_add(delta); }
+  void Add(int64_t delta) { 
+    int64_t old_value = counter_.fetch_add(delta);
+    // Debug statement for memory pool add operation
+    fprintf(stderr, "[MEMORY_DEBUG] MemoryPool::Add: delta=%ld, old_value=%ld, new_value=%ld\n", 
+            delta, old_value, old_value + delta);
+  }
 
-  void Reset() { counter_.store(0); }
+  void Reset() { 
+    int64_t old_value = counter_.exchange(0);
+    // Debug statement for memory pool reset
+    fprintf(stderr, "[MEMORY_DEBUG] MemoryPool::Reset: old_value=%ld, new_value=0\n", old_value);
+  }
 
  private:
   std::atomic<int64_t> counter_;
