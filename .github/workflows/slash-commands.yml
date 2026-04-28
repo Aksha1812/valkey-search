@@ -211,7 +211,7 @@ jobs:
               );
               if (failed.length === 0) return;
               for (const run of failed) {
-                await github.rest.actions.reRunWorkflowFailedJobs({
+                await github.rest.actions.reRunFailedJobs({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   run_id: run.id,
