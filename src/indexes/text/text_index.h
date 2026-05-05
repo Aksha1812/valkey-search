@@ -42,16 +42,23 @@ using TokenPositions =
 
 class TextIndexSchema;
 
-// FT.INFO counters for text info fields and memory pools
+// FT.INFO counters and per-component memory pools for the text index.
 struct TextIndexMetadata {
   std::atomic<uint64_t> total_positions{0};
   std::atomic<uint64_t> num_unique_terms{0};
   std::atomic<uint64_t> total_term_frequency{0};
 
-  // Memory pools for text index components
-  MemoryPool posting_memory_pool_{0};
-  MemoryPool radix_memory_pool_{0};
-  MemoryPool text_index_memory_pool_{0};
+  // Populated via IsolatedMemoryScope wrappers in CommitKeyData /
+  // DeleteKeyData (same mechanism as StringInternStore::memory_pool_).
+  //
+  // postings_memory_pool_: Postings objects, btree_map nodes inside each
+  //   Postings, per-key rax tree nodes, and per-key index container overhead.
+  // position_memory_pool_: FlatPositionMap allocations — one per document
+  //   per unique term.  Tracked separately by passing this pool into
+  //   Postings::RemoveKey so FlatPositionMap::Destroy is wrapped in its own
+  //   IsolatedMemoryScope.
+  MemoryPool postings_memory_pool_{0};
+  MemoryPool position_memory_pool_{0};
 };
 
 class TextIndex {
@@ -212,8 +219,13 @@ class TextIndexSchema {
   uint64_t GetTotalPositions() const;
   uint64_t GetNumUniqueTerms() const;
   uint64_t GetTotalTermFrequency() const;
-  // TODO: Implement the following APIs when we want granular memory metrics for
-  // text index components
+
+  // Per-component memory usage.
+  // GetPostingsMemoryUsage: Postings objects + btree nodes + per-key rax/nhm.
+  // GetPositionMemoryUsage: FlatPositionMap allocations.
+  // GetRadixTreeMemoryUsage: main prefix + optional suffix rax (via
+  //   Rax::GetAllocSize(), always exact, no runtime tracking needed).
+  // GetTotalTextIndexMemoryUsage: sum of the three components above.
   uint64_t GetPostingsMemoryUsage() const;
   uint64_t GetRadixTreeMemoryUsage() const;
   uint64_t GetPositionMemoryUsage() const;

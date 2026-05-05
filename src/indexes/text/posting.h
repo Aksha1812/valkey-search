@@ -81,8 +81,12 @@ struct Postings {
   // Insert the key with FlatPositionMap
   void InsertKey(const Key& key, FlatPositionMap* flat_map);
 
-  // Remove a key and all positions for it
-  void RemoveKey(const Key& key, TextIndexMetadata* metadata);
+  // Remove a key and all positions for it.
+  // If position_pool is non-null, the FlatPositionMap::Destroy call is wrapped
+  // in an IsolatedMemoryScope so the deallocation is captured in that pool
+  // separately from the postings-level bookkeeping the caller may be tracking.
+  void RemoveKey(const Key& key, TextIndexMetadata* metadata,
+                 MemoryPool* position_pool = nullptr);
 
   // Total number of keys
   size_t GetKeyCount() const;

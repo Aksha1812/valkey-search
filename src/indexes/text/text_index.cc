@@ -16,6 +16,7 @@
 #include "libstemmer.h"
 #include "src/valkey_search_options.h"
 #include "vmsdk/src/memory_allocation.h"
+#include "vmsdk/src/memory_tracker.h"
 namespace valkey_search::indexes::text {
 
 namespace {
@@ -53,10 +54,10 @@ InvasivePtr<Postings> AddKeyToPostings(InvasivePtr<Postings> existing_postings,
 
 InvasivePtr<Postings> RemoveKeyFromPostings(
     InvasivePtr<Postings> existing_postings, const InternedStringPtr &key,
-    TextIndexMetadata *metadata) {
+    TextIndexMetadata *metadata, MemoryPool *position_pool = nullptr) {
   CHECK(existing_postings) << "Per-key tree became unaligned";
 
-  existing_postings->RemoveKey(key, metadata);
+  existing_postings->RemoveKey(key, metadata, position_pool);
 
   if (existing_postings->IsEmpty()) {
     metadata->num_unique_terms--;
@@ -229,9 +230,12 @@ void TextIndexSchema::CommitKeyData(const InternedStringPtr &key) {
       metadata_.total_term_frequency += field_mask.CountSetFields();
     }
 
-    // Create FlatPositionMap from PositionMap
-    FlatPositionMap *flat_map =
-        FlatPositionMap::Create(pos_map, num_text_fields_);
+    // Create FlatPositionMap, capturing the allocation in position_memory_pool_.
+    FlatPositionMap *flat_map;
+    {
+      IsolatedMemoryScope pos_scope(metadata_.position_memory_pool_);
+      flat_map = FlatPositionMap::Create(pos_map, num_text_fields_);
+    }
 
     // The updated target gets set in target_add_fn and later used in
     // target_set_fn, so that all trees point to the same postings object
@@ -247,8 +251,13 @@ void TextIndexSchema::CommitKeyData(const InternedStringPtr &key) {
       }
       bool is_new_word = !existing;
 
-      updated_target =
-          AddKeyToPostings(std::move(existing), key, flat_map, &metadata_);
+      // Capture Postings object allocation (InvasivePtr<Postings>::Make for new
+      // words) and the btree_map node inserted by InsertKey.
+      {
+        IsolatedMemoryScope postings_scope(metadata_.postings_memory_pool_);
+        updated_target =
+            AddKeyToPostings(std::move(existing), key, flat_map, &metadata_);
+      }
 
       if (is_new_word) {
         absl::WriterMutexLock tree_lock(&text_index_mutex_);
@@ -257,8 +266,11 @@ void TextIndexSchema::CommitKeyData(const InternedStringPtr &key) {
       }
     }
 
-    // Update per-key index (no locking needed — local to this call).
-    key_index.MutateTarget(token, updated_target, reverse_token);
+    // Update per-key index, capturing rax node allocations in postings pool.
+    {
+      IsolatedMemoryScope key_rax_scope(metadata_.postings_memory_pool_);
+      key_index.MutateTarget(token, updated_target, reverse_token);
+    }
   }
 
   if (stem_text_field_mask_ && !stem_mappings.empty()) {
@@ -279,8 +291,10 @@ void TextIndexSchema::CommitKeyData(const InternedStringPtr &key) {
     }
   }
 
-  // Map the key to the newly created per-key index
+  // Map the key to the newly created per-key index, capturing the
+  // node_hash_map container node allocation in postings_memory_pool_.
   {
+    IsolatedMemoryScope emplace_scope(metadata_.postings_memory_pool_);
     std::lock_guard<std::mutex> per_key_guard(per_key_text_indexes_mutex_);
     per_key_text_indexes_.emplace(key, std::move(key_index));
   }
@@ -317,9 +331,16 @@ void TextIndexSchema::DeleteKeyData(const InternedStringPtr &key) {
         existing = text_index_->GetPrefix().FindPostingsTarget(word_str);
       }
 
+      // Capture btree_map node deallocation (key_to_positions_.extract) and
+      // any InvasivePtr ref-count changes; FlatPositionMap::Destroy is
+      // captured separately inside RemoveKey via position_memory_pool_.
       InvasivePtr<Postings> updated_target;
-      updated_target =
-          RemoveKeyFromPostings(std::move(existing), key, &metadata_);
+      {
+        IsolatedMemoryScope postings_scope(metadata_.postings_memory_pool_);
+        updated_target = RemoveKeyFromPostings(std::move(existing), key,
+                                               &metadata_,
+                                               &metadata_.position_memory_pool_);
+      }
 
       if (!updated_target) {
         absl::WriterMutexLock tree_lock(&text_index_mutex_);
@@ -359,6 +380,16 @@ void TextIndexSchema::DeleteKeyData(const InternedStringPtr &key) {
       }
     }
   }
+
+  // Explicitly destroy the per-key TextIndex within a postings_memory_pool_
+  // scope so that the per-key rax node frees and ~Postings() destructor
+  // calls (for single-document words) are captured.
+  {
+    IsolatedMemoryScope per_key_cleanup(metadata_.postings_memory_pool_);
+    auto owned = std::move(node);
+    // owned destroyed here: per-key rax freed + FreePostingsCallback fires
+    // ~Postings() for any word whose last document was just removed.
+  }
 }
 
 uint64_t TextIndexSchema::GetTotalPositions() const {
@@ -371,6 +402,30 @@ uint64_t TextIndexSchema::GetNumUniqueTerms() const {
 
 uint64_t TextIndexSchema::GetTotalTermFrequency() const {
   return metadata_.total_term_frequency.load();
+}
+
+uint64_t TextIndexSchema::GetPostingsMemoryUsage() const {
+  return static_cast<uint64_t>(
+      std::max(int64_t{0}, metadata_.postings_memory_pool_.GetUsage()));
+}
+
+uint64_t TextIndexSchema::GetPositionMemoryUsage() const {
+  return static_cast<uint64_t>(
+      std::max(int64_t{0}, metadata_.position_memory_pool_.GetUsage()));
+}
+
+uint64_t TextIndexSchema::GetRadixTreeMemoryUsage() const {
+  uint64_t total = text_index_->GetPrefix().GetAllocSize();
+  auto suffix = text_index_->GetSuffix();
+  if (suffix.has_value()) {
+    total += suffix->get().GetAllocSize();
+  }
+  return total;
+}
+
+uint64_t TextIndexSchema::GetTotalTextIndexMemoryUsage() const {
+  return GetPostingsMemoryUsage() + GetPositionMemoryUsage() +
+         GetRadixTreeMemoryUsage();
 }
 
 std::string TextIndexSchema::GetAllStemVariants(
