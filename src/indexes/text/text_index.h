@@ -42,16 +42,14 @@ using TokenPositions =
 
 class TextIndexSchema;
 
-// FT.INFO counters for text info fields and memory pools
+// FT.INFO counters for text info fields
 struct TextIndexMetadata {
   std::atomic<uint64_t> total_positions{0};
   std::atomic<uint64_t> num_unique_terms{0};
   std::atomic<uint64_t> total_term_frequency{0};
 
-  // Memory pools for text index components
-  MemoryPool posting_memory_pool_{0};
-  MemoryPool radix_memory_pool_{0};
-  MemoryPool text_index_memory_pool_{0};
+  // TODO(#655): Add per-component memory pool tracking (postings, radix tree,
+  // position maps) once a correct accounting strategy is designed.
 };
 
 class TextIndex {
@@ -212,12 +210,9 @@ class TextIndexSchema {
   uint64_t GetTotalPositions() const;
   uint64_t GetNumUniqueTerms() const;
   uint64_t GetTotalTermFrequency() const;
-  // TODO: Implement the following APIs when we want granular memory metrics for
-  // text index components
-  uint64_t GetPostingsMemoryUsage() const;
-  uint64_t GetRadixTreeMemoryUsage() const;
-  uint64_t GetPositionMemoryUsage() const;
-  uint64_t GetTotalTextIndexMemoryUsage() const;
+  // TODO(#655): GetPostingsMemoryUsage, GetRadixTreeMemoryUsage,
+  // GetPositionMemoryUsage, GetTotalTextIndexMemoryUsage — to be implemented
+  // once per-component memory accounting is designed correctly.
 
   // Total number of keys with text fields indexed in this schema.
   // No locking needed because only called from read phase.
