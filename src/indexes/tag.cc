@@ -24,6 +24,7 @@
 #include "src/indexes/index_base.h"
 #include "src/query/predicate.h"
 #include "src/utils/patricia_tree.h"
+#include "src/utils/scanner.h"
 #include "src/utils/string_interning.h"
 #include "src/valkey_search_options.h"
 #include "vmsdk/src/valkey_module_api/valkey_module.h"
@@ -41,8 +42,23 @@ Tag::Tag(const data_model::TagIndex& tag_index_proto)
       case_sensitive_(tag_index_proto.case_sensitive()),
       tree_(case_sensitive_) {}
 
+bool Tag::IsValidUtf8(absl::string_view text) {
+  utils::Scanner scanner(text);
+  while (scanner.GetPosition() < text.size()) {
+    utils::Scanner::Char ch = scanner.NextUtf8();
+    if (ch == utils::Scanner::kEOF) {
+      break;
+    }
+  }
+  return scanner.GetInvalidUtf8Count() == 0 &&
+         scanner.GetPosition() == text.size();
+}
+
 absl::StatusOr<bool> Tag::AddRecord(const InternedStringPtr& key,
                                     absl::string_view data) {
+  if (!IsValidUtf8(data)) {
+    return false;
+  }
   auto interned_data = StringInternStore::Intern(data);
   auto parsed_tags = ParseRecordTags(*interned_data, separator_);
   absl::MutexLock lock(&index_mutex_);
