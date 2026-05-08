@@ -141,9 +141,10 @@ static auto max_worker_suspension_secs =
 
 /// Should this instance use coordinator?
 constexpr absl::string_view kUseCoordinator{"use-coordinator"};
-static auto use_coordinator = config::BooleanBuilder(kUseCoordinator, false)
-                                  .Hidden()  // can only be set during start-up
-                                  .Build();
+static auto use_coordinator =
+    config::BooleanBuilder(kUseCoordinator, false)
+        .Immutable()  // can only be set during start-up
+        .Build();
 
 // Not allowing replace delete is aligned with RediSearch
 constexpr absl::string_view kHNSWAllowReplaceDeleted{
