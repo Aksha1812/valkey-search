@@ -6,6 +6,8 @@
  */
 
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "src/acl.h"
 #include "src/commands/commands.h"
@@ -35,7 +37,7 @@ class DropConsistencyCheckFanoutOperation
             vmsdk::cluster_map::FanoutTargetMode::kAll>(false, false),
         db_num_(db_num),
         index_name_(index_name),
-        timeout_ms_(timeout_ms){};
+        timeout_ms_(timeout_ms) {};
 
   std::vector<vmsdk::cluster_map::NodeInfo> GetTargets() const override {
     return ValkeySearch::Instance().GetClusterMap()->GetTargets(
@@ -106,10 +108,20 @@ class DropConsistencyCheckFanoutOperation
 
 absl::Status FTDropIndexCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
                             int argc) {
-  if (argc != 2) {
+  if (argc < 2 || argc > 3) {
     return absl::InvalidArgumentError(vmsdk::WrongArity(kDropIndexCommand));
   }
   auto index_schema_name = vmsdk::ToStringView(argv[1]);
+  bool delete_documents = false;
+  if (argc == 3) {
+    auto option = vmsdk::ToStringView(argv[2]);
+    if (absl::EqualsIgnoreCase(option, "DD")) {
+      delete_documents = true;
+    } else {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unknown option `", option, "`"));
+    }
+  }
 
   VMSDK_ASSIGN_OR_RETURN(
       auto index_schema,
@@ -117,6 +129,13 @@ absl::Status FTDropIndexCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
                                                index_schema_name));
   VMSDK_RETURN_IF_ERROR(AclPrefixCheck(ctx, acl::KeyAccess::kWrite,
                                        index_schema->GetKeyPrefixes()));
+
+  if (delete_documents) {
+    // TODO: Implement document deletion with DD option.
+    // This requires iterating all keys tracked by the index and deleting them.
+    return absl::UnimplementedError(
+        "The DD (Delete Documents) option is not yet supported");
+  }
 
   VMSDK_RETURN_IF_ERROR(SchemaManager::Instance().RemoveIndexSchema(
       ValkeyModule_GetSelectedDb(ctx), index_schema_name));
