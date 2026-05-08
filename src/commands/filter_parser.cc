@@ -253,7 +253,11 @@ absl::StatusOr<double> FilterParser::ParseNumber() {
   std::string number_str;
   double value;
   int multiplier = Match('-', false) ? -1 : 1;
-  while (!IsEnd() && (std::isdigit(Peek()) || Peek() == '.')) {
+  while (!IsEnd() &&
+         (std::isdigit(Peek()) || Peek() == '.' || Peek() == 'e' ||
+          Peek() == 'E' ||
+          ((Peek() == '+' || Peek() == '-') && !number_str.empty() &&
+           (number_str.back() == 'e' || number_str.back() == 'E')))) {
     number_str += expression_[pos_++];
   }
   if (absl::AsciiStrToLower(number_str) != "nan" &&
