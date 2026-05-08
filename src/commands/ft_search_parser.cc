@@ -247,9 +247,14 @@ absl::Status SearchCommand::PostParseQueryString() {
   VMSDK_RETURN_IF_ERROR(query::SearchParameters::PostParseQueryString());
 
   if (sortby_parameter.has_value()) {
-    // Validate sortby field exists in the index schema
-    VMSDK_RETURN_IF_ERROR(
-        index_schema->GetIdentifier(sortby_parameter->field).status());
+    // Skip validation for the virtual vector score field (it's computed, not
+    // in the schema). For all other fields, validate they exist.
+    bool is_score_field = score_as && sortby_parameter->field ==
+                                          vmsdk::ToStringView(score_as.get());
+    if (!is_score_field) {
+      VMSDK_RETURN_IF_ERROR(
+          index_schema->GetIdentifier(sortby_parameter->field).status());
+    }
   }
 
   return absl::OkStatus();
