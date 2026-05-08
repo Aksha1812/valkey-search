@@ -729,6 +729,14 @@ absl::StatusOr<data_model::IndexSchema> ParseFTCreateArgs(
   while (itr.HasNext()) {
     absl::string_view attribute_identifier;
     VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, attribute_identifier));
+    if (index_schema_proto.attribute_data_type() ==
+            data_model::AttributeDataType::ATTRIBUTE_DATA_TYPE_JSON &&
+        !attribute_identifier.empty() && attribute_identifier[0] != '$') {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "JSON schema identifiers must be valid JSON paths starting with "
+          "'$', got `",
+          attribute_identifier, "`"));
+    }
     VMSDK_ASSIGN_OR_RETURN(
         auto attribute,
         ParseAttributeArgs(itr, attribute_identifier, index_schema_proto,
