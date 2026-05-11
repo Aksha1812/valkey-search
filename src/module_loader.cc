@@ -9,6 +9,7 @@
 
 #include "src/commands/commands.h"
 #include "src/keyspace_event_manager.h"
+#include "src/rdf/commands/rdf_commands.h"
 #include "src/valkey_search.h"
 #include "vmsdk/src/module.h"
 #include "vmsdk/src/utils.h"
@@ -45,6 +46,7 @@ vmsdk::module::Options options = {
     .name = "search",
     .acl_categories = ACLPermissionFormatter({
         valkey_search::kSearchCategory,
+        valkey_search::rdf::kRDFCategory,
     }),
     .version = MODULE_VERSION,
     .minimum_valkey_version = MINIMUM_VALKEY_VERSION,
@@ -107,6 +109,58 @@ vmsdk::module::Options options = {
                           vmsdk::module::kDenyOOMFlag},
                 .cmd_func =
                     &vmsdk::CreateCommand<valkey_search::FTAggregateCmd>,
+            },
+            // RDF commands
+            {
+                .cmd_name = valkey_search::rdf::kRDFGraphCreateCommand,
+                .permissions = ACLPermissionFormatter(
+                    valkey_search::rdf::kRDFWritePermissions),
+                .flags = {vmsdk::module::kWriteFlag, vmsdk::module::kFastFlag},
+                .cmd_func =
+                    &vmsdk::CreateCommand<valkey_search::rdf::RDFGraphCreateCmd>,
+            },
+            {
+                .cmd_name = valkey_search::rdf::kRDFGraphDropCommand,
+                .permissions = ACLPermissionFormatter(
+                    valkey_search::rdf::kRDFWritePermissions),
+                .flags = {vmsdk::module::kWriteFlag, vmsdk::module::kFastFlag},
+                .cmd_func =
+                    &vmsdk::CreateCommand<valkey_search::rdf::RDFGraphDropCmd>,
+            },
+            {
+                .cmd_name = valkey_search::rdf::kRDFGraphListCommand,
+                .permissions = ACLPermissionFormatter(
+                    valkey_search::rdf::kRDFReadPermissions),
+                .flags = {vmsdk::module::kReadOnlyFlag,
+                          vmsdk::module::kFastFlag},
+                .cmd_func =
+                    &vmsdk::CreateCommand<valkey_search::rdf::RDFGraphListCmd>,
+            },
+            {
+                .cmd_name = valkey_search::rdf::kRDFGraphInfoCommand,
+                .permissions = ACLPermissionFormatter(
+                    valkey_search::rdf::kRDFReadPermissions),
+                .flags = {vmsdk::module::kReadOnlyFlag,
+                          vmsdk::module::kFastFlag},
+                .cmd_func =
+                    &vmsdk::CreateCommand<valkey_search::rdf::RDFGraphInfoCmd>,
+            },
+            {
+                .cmd_name = valkey_search::rdf::kRDFTripleAddCommand,
+                .permissions = ACLPermissionFormatter(
+                    valkey_search::rdf::kRDFWritePermissions),
+                .flags = {vmsdk::module::kWriteFlag,
+                          vmsdk::module::kDenyOOMFlag},
+                .cmd_func =
+                    &vmsdk::CreateCommand<valkey_search::rdf::RDFTripleAddCmd>,
+            },
+            {
+                .cmd_name = valkey_search::rdf::kRDFTripleDelCommand,
+                .permissions = ACLPermissionFormatter(
+                    valkey_search::rdf::kRDFWritePermissions),
+                .flags = {vmsdk::module::kWriteFlag, vmsdk::module::kFastFlag},
+                .cmd_func =
+                    &vmsdk::CreateCommand<valkey_search::rdf::RDFTripleDelCmd>,
             },
         },
     .on_load =
