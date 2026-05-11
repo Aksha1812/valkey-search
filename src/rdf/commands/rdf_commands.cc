@@ -6,6 +6,8 @@
 #include "src/rdf/commands/rdf_commands.h"
 
 #include "src/rdf/graph.h"
+#include "src/rdf/sparql/executor.h"
+#include "src/rdf/sparql/parser.h"
 #include "vmsdk/src/type_conversions.h"
 #include "vmsdk/src/valkey_module_api/valkey_module.h"
 
@@ -112,6 +114,59 @@ absl::Status RDFTripleDelCmd(ValkeyModuleCtx* ctx, ValkeyModuleString** argv,
   auto result = graph->DeleteTriple(subject, predicate, object);
   if (!result.ok()) return result.status();
   ValkeyModule_ReplyWithLongLong(ctx, *result ? 1 : 0);
+  return absl::OkStatus();
+}
+
+absl::Status RDFQueryCmd(ValkeyModuleCtx* ctx, ValkeyModuleString** argv,
+                         int argc) {
+  if (argc < 3) {
+    return absl::InvalidArgumentError(
+        "usage: RDF.QUERY <graph> <sparql_query>");
+  }
+  auto graph_name = vmsdk::ToStringView(argv[1]);
+  auto sparql_str = vmsdk::ToStringView(argv[2]);
+
+  auto* graph = GraphManager::Instance().GetGraph(graph_name);
+  if (!graph) {
+    return absl::NotFoundError("graph not found");
+  }
+
+  // Parse SPARQL
+  auto parsed = sparql::Parse(sparql_str);
+  if (!parsed.ok()) return parsed.status();
+
+  // Execute
+  auto result = sparql::Execute(*parsed, graph);
+  if (!result.ok()) return result.status();
+
+  // Format response: [variables_array, [row1, row2, ...]]
+  ValkeyModule_ReplyWithArray(ctx, 2);
+
+  // Variables header
+  ValkeyModule_ReplyWithArray(ctx, result->variables.size());
+  for (const auto& var : result->variables) {
+    ValkeyModule_ReplyWithStringBuffer(ctx, var.data(), var.size());
+  }
+
+  // Result rows
+  ValkeyModule_ReplyWithArray(ctx, result->solutions.size());
+  for (const auto& sol : result->solutions) {
+    ValkeyModule_ReplyWithArray(ctx, result->variables.size());
+    for (const auto& var : result->variables) {
+      auto it = sol.find(var);
+      if (it == sol.end()) {
+        ValkeyModule_ReplyWithNull(ctx);
+      } else {
+        auto decoded = graph->DecodeTerm(it->second);
+        if (decoded.ok()) {
+          ValkeyModule_ReplyWithStringBuffer(ctx, decoded->data(),
+                                            decoded->size());
+        } else {
+          ValkeyModule_ReplyWithNull(ctx);
+        }
+      }
+    }
+  }
   return absl::OkStatus();
 }
 

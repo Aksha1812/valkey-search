@@ -20,6 +20,7 @@ constexpr absl::string_view kRDFGraphListCommand{"RDF.GRAPH.LIST"};
 constexpr absl::string_view kRDFGraphInfoCommand{"RDF.GRAPH.INFO"};
 constexpr absl::string_view kRDFTripleAddCommand{"RDF.TRIPLE.ADD"};
 constexpr absl::string_view kRDFTripleDelCommand{"RDF.TRIPLE.DEL"};
+constexpr absl::string_view kRDFQueryCommand{"RDF.QUERY"};
 
 // ACL category
 constexpr absl::string_view kRDFCategory{"@rdf"};
@@ -43,6 +44,8 @@ absl::Status RDFTripleAddCmd(ValkeyModuleCtx* ctx, ValkeyModuleString** argv,
                              int argc);
 absl::Status RDFTripleDelCmd(ValkeyModuleCtx* ctx, ValkeyModuleString** argv,
                              int argc);
+absl::Status RDFQueryCmd(ValkeyModuleCtx* ctx, ValkeyModuleString** argv,
+                         int argc);
 
 }  // namespace valkey_search::rdf
 

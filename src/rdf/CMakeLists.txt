@@ -8,7 +8,13 @@ set(SRCS_RDF
     ${CMAKE_CURRENT_LIST_DIR}/graph.cc
     ${CMAKE_CURRENT_LIST_DIR}/graph.h
     ${CMAKE_CURRENT_LIST_DIR}/commands/rdf_commands.cc
-    ${CMAKE_CURRENT_LIST_DIR}/commands/rdf_commands.h)
+    ${CMAKE_CURRENT_LIST_DIR}/commands/rdf_commands.h
+    ${CMAKE_CURRENT_LIST_DIR}/sparql/lexer.cc
+    ${CMAKE_CURRENT_LIST_DIR}/sparql/lexer.h
+    ${CMAKE_CURRENT_LIST_DIR}/sparql/parser.cc
+    ${CMAKE_CURRENT_LIST_DIR}/sparql/parser.h
+    ${CMAKE_CURRENT_LIST_DIR}/sparql/executor.cc
+    ${CMAKE_CURRENT_LIST_DIR}/sparql/executor.h)
 
 valkey_search_add_static_library(rdf "${SRCS_RDF}")
 target_include_directories(rdf PUBLIC ${CMAKE_SOURCE_DIR})

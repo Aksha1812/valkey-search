@@ -162,6 +162,14 @@ vmsdk::module::Options options = {
                 .cmd_func =
                     &vmsdk::CreateCommand<valkey_search::rdf::RDFTripleDelCmd>,
             },
+            {
+                .cmd_name = valkey_search::rdf::kRDFQueryCommand,
+                .permissions = ACLPermissionFormatter(
+                    valkey_search::rdf::kRDFReadPermissions),
+                .flags = {vmsdk::module::kReadOnlyFlag},
+                .cmd_func =
+                    &vmsdk::CreateCommand<valkey_search::rdf::RDFQueryCmd>,
+            },
         },
     .on_load =
         [](ValkeyModuleCtx *ctx, ValkeyModuleString **argv, int argc,
