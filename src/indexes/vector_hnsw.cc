@@ -178,6 +178,19 @@ VectorHNSW<T>::VectorHNSW(int dimensions,
 template <typename T>
 absl::Status VectorHNSW<T>::AddRecordImpl(uint64_t internal_id,
                                           absl::string_view record) {
+  // ELMO-118657 crash reproducer: arm hook after 500 records if env set
+  static std::atomic<int> add_count{0};
+  static std::atomic<bool> hook_armed{false};
+  int count = add_count.fetch_add(1);
+  if (count == 500 && !hook_armed.load() && getenv("VALKEY_CRASH_HOOK")) {
+    hook_armed.store(true);
+    hnswlib::g_after_read_data_ptr_hook = [](unsigned int id, char **result) {
+      if (id < 100) {
+        hnswlib::g_after_read_data_ptr_hook = nullptr;
+        *result = (char *)0xDEADBEEFDEADBEEF;
+      }
+    };
+  }
   do {
     try {
       absl::ReaderMutexLock lock(&resize_mutex_);

@@ -37,6 +37,11 @@
 #endif
 
 namespace hnswlib {
+
+#include <functional>
+inline std::function<void(unsigned int, char **)> g_after_read_data_ptr_hook =
+    nullptr;
+
 typedef unsigned int tableint;
 typedef unsigned int linklistsizeint;
 
@@ -230,7 +235,11 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
 
   inline char *getDataByInternalId(tableint internal_id) const {
     auto data_ptr = (char **)(getDataPtrByInternalId(internal_id));
-    return *data_ptr;
+    char *result = *data_ptr;
+    if (g_after_read_data_ptr_hook) {
+      g_after_read_data_ptr_hook(internal_id, &result);
+    }
+    return result;
   }
 
   int getRandomLevel(double reverse_size) {

@@ -87,6 +87,14 @@ target_link_libraries(indexes_test PRIVATE text)
 target_link_libraries(indexes_test PRIVATE hnswlib_vmsdk)
 finalize_test_flags(indexes_test)
 
+# HNSW concurrent race test (ELMO-118657 reproducer)
+set(HNSW_RACE_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/hnsw_race_test.cc)
+add_executable(hnsw_race_test ${HNSW_RACE_TEST_SOURCES})
+target_include_directories(hnsw_race_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+target_link_libraries(hnsw_race_test PRIVATE testing_common_base)
+target_link_libraries(hnsw_race_test PRIVATE hnswlib_vmsdk)
+finalize_test_flags(hnsw_race_test)
+
 # 1. Core Test Suite - consolidates core functionality tests
 set(CORE_TEST_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/valkey_search_test.cc
