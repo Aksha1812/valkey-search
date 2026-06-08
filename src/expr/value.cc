@@ -142,7 +142,7 @@ absl::string_view Value::AsStringView() const {
   } else if (auto result = std::get_if<std::string>(&value_)) {
     return *result;
   } else {
-    CHECK(false);
+    return "";
   }
 }
 
@@ -156,7 +156,7 @@ std::string Value::AsString() const {
   } else if (auto result = std::get_if<std::string>(&value_)) {
     return *result;
   } else {
-    CHECK(false);
+    return "";
   }
 }
 
@@ -397,10 +397,16 @@ Value FuncSqrt(const Value& o) {
 }
 
 Value FuncStrlen(const Value& o) {
+  if (o.IsNil()) {
+    return Value(Value::Nil("strlen requires a string argument"));
+  }
   return Value(double(o.AsStringView().size()));
 }
 
 Value FuncStartswith(const Value& l, const Value& r) {
+  if (l.IsNil() || r.IsNil()) {
+    return Value(Value::Nil("startswith requires string arguments"));
+  }
   auto ls = l.AsStringView();
   auto rs = r.AsStringView();
   if (rs.size() > ls.size()) {
@@ -411,6 +417,9 @@ Value FuncStartswith(const Value& l, const Value& r) {
 }
 
 Value FuncContains(const Value& l, const Value& r) {
+  if (l.IsNil() || r.IsNil()) {
+    return Value(Value::Nil("contains requires string arguments"));
+  }
   auto ls = l.AsStringView();
   auto rs = r.AsStringView();
   size_t count = 0;
@@ -427,6 +436,9 @@ Value FuncContains(const Value& l, const Value& r) {
 }
 
 Value FuncSubstr(const Value& l, const Value& m, const Value& r) {
+  if (l.IsNil()) {
+    return Value(Value::Nil("substr requires a string argument"));
+  }
   auto ls = l.AsStringView();
   auto offset_p = m.AsInteger();
   auto length_p = r.AsInteger();
@@ -452,6 +464,9 @@ Value FuncSubstr(const Value& l, const Value& m, const Value& r) {
 }
 
 Value FuncLower(const Value& o) {
+  if (o.IsNil()) {
+    return Value(Value::Nil("lower requires a string argument"));
+  }
   auto os = o.AsStringView();
   std::string result;
   result.reserve(os.size());
@@ -467,6 +482,9 @@ Value FuncLower(const Value& o) {
 }
 
 Value FuncUpper(const Value& o) {
+  if (o.IsNil()) {
+    return Value(Value::Nil("upper requires a string argument"));
+  }
   auto os = o.AsStringView();
   std::string result;
   result.reserve(os.size());
@@ -482,6 +500,11 @@ Value FuncUpper(const Value& o) {
 }
 
 Value FuncConcat(const absl::InlinedVector<Value, 4>& values) {
+  for (auto& v : values) {
+    if (v.IsNil()) {
+      return Value(Value::Nil("concat requires non-nil arguments"));
+    }
+  }
   std::string result;
   for (auto& v : values) {
     result.append(v.AsStringView());

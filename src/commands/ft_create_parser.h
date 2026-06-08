@@ -93,6 +93,9 @@ vmsdk::config::Number& GetMaxVectorAttributes();
 /// Return the maximum number of dimensions allowed for vector indices.
 vmsdk::config::Number& GetMaxDimensions();
 
+/// Return the maximum INITIAL_CAP value allowed for vector indices.
+vmsdk::config::Number& GetMaxInitialCap();
+
 /// Return the maximum M parameter value allowed for HNSW algorithm.
 vmsdk::config::Number& GetMaxM();
 
@@ -122,6 +125,7 @@ struct FlatParameters : public FTCreateVectorParameters {
   // Block size holds the amount of vectors in a contiguous array. This is
   // useful when the index is dynamic with respect to addition and deletion.
   uint32_t block_size{kDefaultBlockSize};
+  absl::Status Verify() const;
   std::unique_ptr<data_model::VectorIndex> ToProto() const;
 };
 

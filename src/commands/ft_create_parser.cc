@@ -66,6 +66,7 @@ constexpr int kDefaultTagFieldLenLimit{256};
 constexpr int kDefaultNumericFieldLenLimit{128};
 constexpr size_t kMaxAttributesCount{10000};
 constexpr int kMaxDimensionsCount{64000};
+constexpr int kMaxInitialCap{10000000};
 constexpr int kMaxM{2000000};
 constexpr int kMaxEfConstruction{1000000};
 constexpr int kMaxEfRuntime{1000000};
@@ -84,6 +85,7 @@ constexpr absl::string_view kMaxNumericFieldLenConfig{
 constexpr absl::string_view kMaxAttributesConfig{"max-attributes"};
 constexpr absl::string_view kMaxVectorAttributesConfig{"max-vector-attributes"};
 constexpr absl::string_view kMaxDimensionsConfig{"max-vector-dimensions"};
+constexpr absl::string_view kMaxInitialCapConfig{"max-vector-initial-cap"};
 constexpr absl::string_view kMaxMConfig{"max-vector-m"};
 constexpr absl::string_view kMaxEfConstructionConfig{
     "max-vector-ef-construction"};
@@ -169,6 +171,17 @@ static auto max_dimensions =
                                  kMaxDimensionsCount)           // max size
         .WithValidationCallback(
             CHECK_RANGE(1, kMaxDimensionsCount, kMaxDimensionsConfig))
+        .Build();
+
+/// Register the "--max-vector-initial-cap" flag. Controls the max INITIAL_CAP
+/// for vector indices.
+static auto max_initial_cap =
+    vmsdk::config::NumberBuilder(kMaxInitialCapConfig,  // name
+                                 kMaxInitialCap,        // default size
+                                 1,                     // min size
+                                 kMaxInitialCap)        // max size
+        .WithValidationCallback(
+            CHECK_RANGE(1, kMaxInitialCap, kMaxInitialCapConfig))
         .Build();
 
 /// Register the "--max-m" flag. Controls the max M parameter for HNSW
@@ -787,6 +800,12 @@ absl::Status FTCreateVectorParameters::Verify() const {
     return absl::InvalidArgumentError(
         "INITIAL_CAP must be a positive integer greater than 0.");
   }
+  const auto max_initial_cap_value = options::GetMaxInitialCap().GetValue();
+  VMSDK_RETURN_IF_ERROR(
+      vmsdk::VerifyRange(initial_cap, 1, max_initial_cap_value))
+      << "INITIAL_CAP must be a positive integer greater than 0 and cannot "
+         "exceed "
+      << max_initial_cap_value << ".";
   FTCreateVectorParameters default_values;
   if (vector_data_type == default_values.vector_data_type) {
     return absl::InvalidArgumentError("Missing vector TYPE parameter.");
@@ -828,6 +847,14 @@ absl::Status HNSWParameters::Verify() const {
       << max_ef_runtime_value << ".";
   return absl::OkStatus();
 }
+absl::Status FlatParameters::Verify() const {
+  VMSDK_RETURN_IF_ERROR(FTCreateVectorParameters::Verify());
+  if (block_size == 0) {
+    return absl::InvalidArgumentError(
+        "BLOCK_SIZE must be a positive integer greater than 0.");
+  }
+  return absl::OkStatus();
+}
 std::unique_ptr<data_model::VectorIndex> FlatParameters::ToProto() const {
   auto vector_index_proto = FTCreateVectorParameters::ToProto();
   auto flat_algorithm_proto = std::make_unique<data_model::FlatAlgorithm>();
@@ -861,6 +888,10 @@ vmsdk::config::Number &GetMaxVectorAttributes() {
 
 vmsdk::config::Number &GetMaxDimensions() {
   return dynamic_cast<vmsdk::config::Number &>(*max_dimensions);
+}
+
+vmsdk::config::Number &GetMaxInitialCap() {
+  return dynamic_cast<vmsdk::config::Number &>(*max_initial_cap);
 }
 
 vmsdk::config::Number &GetMaxM() {

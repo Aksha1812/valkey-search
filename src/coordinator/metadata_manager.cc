@@ -922,9 +922,16 @@ absl::Status MetadataManager::CreateEntryOnReplica(
          "during loading";
 
   auto obj_name = ObjName::Decode(id);
-  auto callback_result = TriggerCallbacks(type_name, obj_name, *metadata_entry);
-  if (!callback_result.ok()) {
-    return callback_result;
+
+  // Skip callbacks during loading — the schema manager and callback state
+  // may not be fully initialized yet. Metadata is stored regardless and
+  // callbacks will be triggered during post-load initialization.
+  if (!(ValkeyModule_GetContextFlags(ctx) & VALKEYMODULE_CTX_FLAGS_LOADING)) {
+    auto callback_result =
+        TriggerCallbacks(type_name, obj_name, *metadata_entry);
+    if (!callback_result.ok()) {
+      return callback_result;
+    }
   }
 
   auto result = metadata_.Get();
