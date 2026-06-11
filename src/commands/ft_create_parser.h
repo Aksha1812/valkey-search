@@ -93,6 +93,9 @@ vmsdk::config::Number& GetMaxVectorAttributes();
 /// Return the maximum number of dimensions allowed for vector indices.
 vmsdk::config::Number& GetMaxDimensions();
 
+/// Return the maximum INITIAL_CAP value allowed for vector indices.
+vmsdk::config::Number& GetMaxInitialCap();
+
 /// Return the maximum M parameter value allowed for HNSW algorithm.
 vmsdk::config::Number& GetMaxM();
 
