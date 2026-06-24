@@ -9,12 +9,14 @@
 
 #include <netinet/in.h>
 
+#include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <memory>
 #include <optional>
 #include <queue>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -42,6 +44,17 @@
 #include "vmsdk/src/type_conversions.h"
 #include "vmsdk/src/utils.h"
 #include "vmsdk/src/valkey_module_api/valkey_module.h"
+
+namespace valkey_search::query::fanout {
+
+}  // namespace valkey_search::query::fanout
+
+// [CRASH REPRO ONLY] ELMO-120313. Defined in index_schema.cc.
+namespace valkey_search {
+extern std::atomic<int> g_repro_race_gate_ms;
+extern std::atomic<int> g_repro_worker_wrote;
+extern std::atomic<int> g_repro_main_read;
+}  // namespace valkey_search
 
 namespace valkey_search::query::fanout {
 
@@ -317,7 +330,23 @@ absl::Status PerformSearchFanoutAsync(
     std::unique_ptr<SearchParameters> parameters,
     vmsdk::ThreadPool *thread_pool) {
   auto request = coordinator::ParametersToGRPCSearchRequest(*parameters);
+  // [CRASH REPRO ONLY] ELMO-120313: rendezvous with a churning mutation worker
+  // (index_schema.cc) so this UNLOCKED read overlaps the concurrent write.
+  bool repro_overlap = false;
+  if (valkey_search::g_repro_race_gate_ms.load(std::memory_order_relaxed) > 0) {
+    for (int budget = 2000; valkey_search::g_repro_worker_wrote.load(
+                                std::memory_order_relaxed) == 0 &&
+                            budget > 0;
+         --budget) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    repro_overlap =
+        valkey_search::g_repro_worker_wrote.load(std::memory_order_relaxed);
+  }
   uint64_t index_size = parameters->index_schema->GetIndexKeyInfoSize();
+  if (repro_overlap) {
+    valkey_search::g_repro_main_read.store(1, std::memory_order_relaxed);
+  }
   uint32_t min_index_size =
       options::GetFanoutUniformityMinIndexSize().GetValue();
   if (parameters->IsNonVectorQuery()) {

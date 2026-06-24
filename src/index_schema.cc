@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -966,6 +967,16 @@ void IndexSchema::BackfillScanCallback(ValkeyModuleCtx *ctx,
 }
 
 CONTROLLED_BOOLEAN(StopBackfill, false);
+
+// [CRASH REPRO ONLY] ELMO-120313 deterministic race handshake. Relaxed atomics
+// (no happens-before) let a background mutation worker rendezvous with the
+// main-thread unlocked read in query/fanout.cc so TSAN reports the genuine
+// data race on index_key_info_. Bounded so the fixed (locked) read path cannot
+// deadlock against the racing worker.
+std::atomic<int> g_repro_race_gate_ms{0};
+std::atomic<int> g_repro_worker_wrote{0};
+std::atomic<int> g_repro_main_read{0};
+CONTROLLED_SIZE_T(CrashReproRaceGateMs, 0);
 
 uint32_t IndexSchema::PerformBackfill(ValkeyModuleCtx *ctx,
                                       uint32_t batch_size) {
@@ -1998,6 +2009,29 @@ IndexSchema::ConsumeTrackedMutatedAttribute(const Key &key, bool first_time) {
       auto &key_info = index_key_info_[key];
       key_info.mutation_sequence_number_ = itr->second.sequence_number;
       key_info.document_score = itr->second.document_score;
+      // [CRASH REPRO ONLY] ELMO-120313. While the write lock is held, keep
+      // ACTIVELY mutating index_key_info_ (insert+erase scratch keys, forcing
+      // rehashes) so a write to the map is in flight when the unlocked
+      // main-thread GetIndexKeyInfoSize() read lands -> TSAN flags the race.
+      if (size_t gate = CrashReproRaceGateMs.GetValue();
+          gate > 0 && !vmsdk::IsMainThread()) {
+        g_repro_race_gate_ms.store(static_cast<int>(gate),
+                                   std::memory_order_relaxed);
+        g_repro_worker_wrote.store(1, std::memory_order_relaxed);
+        for (int budget = static_cast<int>(gate);
+             g_repro_main_read.load(std::memory_order_relaxed) == 0 &&
+             budget > 0;
+             --budget) {
+          for (int i = 0; i < 64; ++i) {
+            auto scratch = StringInternStore::Intern(
+                absl::StrCat("__racerepro_scratch__", i));
+            index_key_info_[scratch];
+            index_key_info_.erase(scratch);
+          }
+        }
+        g_repro_worker_wrote.store(0, std::memory_order_relaxed);
+        g_repro_main_read.store(0, std::memory_order_relaxed);
+      }
       // Track entry is now first consumed
       auto mutated_attributes = std::move(itr->second.attributes.value());
       itr->second.attributes = std::nullopt;
