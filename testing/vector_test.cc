@@ -192,6 +192,7 @@ void TestIndex(T* index, int dimensions, int vector_size) {
   VerifyModify(index, vectors[vectors.size() - 2], vectors.size() - 1,
                ExpectedResults::kSuccess, true);
 
+<<<<<<< HEAD
   absl::string_view vector = VectorToStr(vectors_small_dim[0]);
   auto res = index->Search(vector, 10);
   EXPECT_FALSE(res.ok());
@@ -201,6 +202,8 @@ void TestIndex(T* index, int dimensions, int vector_size) {
           "Error parsing vector similarity query: query vector blob size (",
           vector.size(), ") does not match index's expected size (",
           dimensions * sizeof(float), ")."));
+=======
+>>>>>>> ae132be (Validate query vector size against index dimensions at parse time (#1192))
   for (size_t i = 1; i < vectors.size() - 1; ++i) {
     absl::string_view vector = VectorToStr(vectors[i]);
     auto res = index->Search(vector, 10);

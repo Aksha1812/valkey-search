@@ -331,6 +331,7 @@ template <typename T>
 absl::StatusOr<std::deque<Neighbor>> VectorHNSW<T>::Search(
     absl::string_view query, uint64_t count,
     std::unique_ptr<hnswlib::BaseFilterFunctor> filter,
+<<<<<<< HEAD
     std::optional<size_t> ef_runtime) {
   if (!IsValidSizeVector(query)) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -341,6 +342,13 @@ absl::StatusOr<std::deque<Neighbor>> VectorHNSW<T>::Search(
   auto perform_search =
       [this, count, &filter, &ef_runtime](absl::string_view query)
           ABSL_NO_THREAD_SAFETY_ANALYSIS
+=======
+    std::optional<size_t> ef_runtime, bool enable_partial_results) {
+  auto perform_search = [this, count, &filter, enable_partial_results,
+                         &ef_runtime,
+                         &cancellation_token](absl::string_view query)
+                            ABSL_NO_THREAD_SAFETY_ANALYSIS
+>>>>>>> ae132be (Validate query vector size against index dimensions at parse time (#1192))
       -> absl::StatusOr<std::priority_queue<std::pair<T, hnswlib::labeltype>>> {
     try {
       return algo_->searchKnn((T *)query.data(), count, ef_runtime,
