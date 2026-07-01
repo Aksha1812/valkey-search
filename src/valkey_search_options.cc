@@ -145,6 +145,26 @@ static auto use_coordinator = config::BooleanBuilder(kUseCoordinator, false)
                                   .Hidden()  // can only be set during start-up
                                   .Build();
 
+<<<<<<< HEAD
+=======
+// Not allowing replace delete is aligned with RediSearch
+constexpr absl::string_view kHNSWAllowReplaceDeleted{
+    "hnsw-allow-replace-deleted"};
+static auto hnsw_allow_replace_deleted =
+    config::BooleanBuilder(kHNSWAllowReplaceDeleted, false)  // default false
+        .Dev()
+        .Build();
+
+// Kill switch for HNSW index load-time validation (corruption hardening).
+// Default true; can be disabled in the field if a bug in the validation logic
+// were to reject otherwise-valid indexes.
+constexpr absl::string_view kHNSWValidationEnable{"hnsw-validation-enable"};
+static auto hnsw_validation_enable =
+    config::BooleanBuilder(kHNSWValidationEnable, true)  // default true
+        .Dev()
+        .Build();
+
+>>>>>>> 7204f2f (Validate HNSW index data when loading from an external file (#1191))
 // Register an enumerator for the log level
 static const std::vector<std::string_view> kLogLevelNames = {
     VALKEYMODULE_LOGLEVEL_WARNING,
@@ -372,6 +392,25 @@ vmsdk::config::Enum& GetLogLevel() {
   return dynamic_cast<vmsdk::config::Enum&>(*log_level);
 }
 
+<<<<<<< HEAD
+=======
+const config::Boolean& GetHNSWAllowReplaceDeleted() {
+  return dynamic_cast<const config::Boolean&>(*hnsw_allow_replace_deleted);
+}
+
+config::Boolean& GetHNSWAllowReplaceDeletedMutable() {
+  return dynamic_cast<config::Boolean&>(*hnsw_allow_replace_deleted);
+}
+
+const config::Boolean& GetHNSWValidationEnable() {
+  return dynamic_cast<const config::Boolean&>(*hnsw_validation_enable);
+}
+
+config::Boolean& GetHNSWValidationEnableMutable() {
+  return dynamic_cast<config::Boolean&>(*hnsw_validation_enable);
+}
+
+>>>>>>> 7204f2f (Validate HNSW index data when loading from an external file (#1191))
 absl::Status Reset() {
   VMSDK_RETURN_IF_ERROR(use_coordinator->SetValue(false));
   VMSDK_RETURN_IF_ERROR(rdb_load_skip_index->SetValue(false));
