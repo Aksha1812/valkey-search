@@ -137,6 +137,41 @@ static auto use_coordinator =
                                                // start-up
         .Build();
 
+<<<<<<< HEAD
+=======
+// Kill switch for HNSW index load-time validation (corruption hardening).
+// Default true; can be disabled in the field if a bug in the validation logic
+// were to reject otherwise-valid indexes.
+constexpr absl::string_view kHNSWValidationEnable{"hnsw-validation-enable"};
+static auto hnsw_validation_enable =
+    config::BooleanBuilder(kHNSWValidationEnable, true)  // default true
+        .Dev()
+        .Build();
+
+// Register an enumerator for the log level
+static const std::vector<std::string_view> kLogLevelNames = {
+    VALKEYMODULE_LOGLEVEL_WARNING,
+    VALKEYMODULE_LOGLEVEL_NOTICE,
+    VALKEYMODULE_LOGLEVEL_VERBOSE,
+    VALKEYMODULE_LOGLEVEL_DEBUG,
+};
+
+static const std::vector<int> kLogLevelValues = {
+    static_cast<int>(LogLevel::kWarning), static_cast<int>(LogLevel::kNotice),
+    static_cast<int>(LogLevel::kVerbose), static_cast<int>(LogLevel::kDebug)};
+
+/// Should this instance skip loading index data from RDB?
+constexpr absl::string_view kReIndexVectorRDBLoad{"skip-rdb-load"};
+static auto rdb_load_skip_index =
+    config::BooleanBuilder(kReIndexVectorRDBLoad, false).Build();
+
+/// Should this instance skip corrupted internal update?
+constexpr absl::string_view kSkipCorruptedAOFEntries{
+    "skip-corrupted-internal-update-entries"};
+static auto skip_corrupted_internal_update_entries =
+    config::BooleanBuilder(kSkipCorruptedAOFEntries, false).Build();
+
+>>>>>>> 7204f2f (Validate HNSW index data when loading from an external file (#1191))
 /// Control the modules log level verbosity
 static auto log_level =
     config::EnumBuilder(kLogLevel, static_cast<int>(LogLevel::kNotice),
@@ -182,6 +217,25 @@ vmsdk::config::Enum& GetLogLevel() {
   return dynamic_cast<vmsdk::config::Enum&>(*log_level);
 }
 
+<<<<<<< HEAD
+=======
+const config::Boolean& GetHNSWAllowReplaceDeleted() {
+  return dynamic_cast<const config::Boolean&>(*hnsw_allow_replace_deleted);
+}
+
+config::Boolean& GetHNSWAllowReplaceDeletedMutable() {
+  return dynamic_cast<config::Boolean&>(*hnsw_allow_replace_deleted);
+}
+
+const config::Boolean& GetHNSWValidationEnable() {
+  return dynamic_cast<const config::Boolean&>(*hnsw_validation_enable);
+}
+
+config::Boolean& GetHNSWValidationEnableMutable() {
+  return dynamic_cast<config::Boolean&>(*hnsw_validation_enable);
+}
+
+>>>>>>> 7204f2f (Validate HNSW index data when loading from an external file (#1191))
 absl::Status Reset() {
   VMSDK_RETURN_IF_ERROR(use_coordinator->SetValue(false));
   return absl::OkStatus();

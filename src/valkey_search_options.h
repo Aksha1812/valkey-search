@@ -52,6 +52,21 @@ const config::Boolean& GetUseCoordinator();
 /// Return the log level
 config::Enum& GetLogLevel();
 
+<<<<<<< HEAD
+=======
+/// Return the configuration entry for HNSW allow_replace_deleted flag
+const config::Boolean& GetHNSWAllowReplaceDeleted();
+
+/// Return a mutable reference for testing
+config::Boolean& GetHNSWAllowReplaceDeletedMutable();
+
+/// Return the configuration entry for the HNSW load-time validation kill switch
+const config::Boolean& GetHNSWValidationEnable();
+
+/// Return a mutable reference for testing
+config::Boolean& GetHNSWValidationEnableMutable();
+
+>>>>>>> 7204f2f (Validate HNSW index data when loading from an external file (#1191))
 /// Reset the state of the options (mainly needed for testing)
 absl::Status Reset();
 }  // namespace options
