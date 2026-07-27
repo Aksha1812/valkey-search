@@ -2003,10 +2003,9 @@ bool IndexSchema::TrackMutatedRecord(ValkeyModuleCtx *ctx, const Key &key,
     itr->second.weighted_buffer.resize(
         ComputeWeightedBufferSize(itr->second.attributes.value()));
     if (ABSL_PREDICT_TRUE(block_client)) {
-      vmsdk::BlockedClient blocked_client(ctx, true,
-                                          GetBlockedCategoryFromProto());
-      blocked_client.MeasureTimeStart();
-      itr->second.blocked_clients.emplace_back(std::move(blocked_client));
+      // Background indexing time must not be attributed to the write command.
+      itr->second.blocked_clients.emplace_back(
+          ctx, true, GetBlockedCategoryFromProto());
     }
     return true;
   }
@@ -2032,10 +2031,9 @@ bool IndexSchema::TrackMutatedRecord(ValkeyModuleCtx *ctx, const Key &key,
 
   if (ABSL_PREDICT_TRUE(block_client) &&
       ABSL_PREDICT_TRUE(!itr->second.from_multi)) {
-    vmsdk::BlockedClient blocked_client(ctx, true,
-                                        GetBlockedCategoryFromProto());
-    blocked_client.MeasureTimeStart();
-    itr->second.blocked_clients.emplace_back(std::move(blocked_client));
+    // Background indexing time must not be attributed to the write command.
+    itr->second.blocked_clients.emplace_back(ctx, true,
+                                             GetBlockedCategoryFromProto());
   }
 
   if (ABSL_PREDICT_FALSE(!from_backfill && itr->second.from_backfill)) {
