@@ -828,8 +828,17 @@ absl::Status SchemaManager::ShowIndexSchemas(ValkeyModuleCtx *ctx,
 static vmsdk::info_field::Integer number_of_indexes(
     "index_stats", "number_of_indexes",
     vmsdk::info_field::IntegerBuilder().App().Computed([]() -> long long {
-      // Consider indexes pending RDB load
       auto &stats = Metrics::GetStats();
+      // Only surface the "pending RDB load" adjustment while a restore is
+      // actually in progress. The restore counters are per-load bookkeeping and
+      // are not guaranteed to net to zero once a load finishes (total counts
+      // RDB sections while completed counts registered schemas), so applying
+      // the adjustment at rest can leave a stale residual that permanently
+      // inflates the count. Once the restore completes the schema map is
+      // authoritative.
+      if (!stats.rdb_restore_in_progress.load()) {
+        return SchemaManager::Instance().GetNumberOfIndexSchemas();
+      }
       return SchemaManager::Instance().GetNumberOfIndexSchemas() +
              std::max(stats.rdb_restore_total_indexes.load() -
                           stats.rdb_restore_completed_indexes.load(),
