@@ -19,8 +19,9 @@
 //   ReadsPersistentCursor - we read the cursor core gave us.
 //   PollsDeadline - we ask core whether time is up.
 //   CompletesPassWhenTimeRemains - finishing stores cursor 0 ("done").
-//   YieldsAndSavesCursorOnDeadline - out of time stores non-zero.
-//   ResumesFromStoredCursor - a saved position is carried forward.
+//   PassesWorkLayerCursorThroughToCore - the work layer's cursor is forwarded.
+//   HandsStoredCursorToWorkLayer - the stored cursor reaches the work layer.
+//   WorkLayerCanPollTheDeadline - the deadline predicate is wired to core.
 //   ToleratesMissingCursor - a core that gives no cursor still works.
 //
 // Bookkeeping:
@@ -54,6 +55,14 @@ class DefragTest : public vmsdk::ValkeyTest {
   void SetUp() override {
     vmsdk::ValkeyTest::SetUp();
     ResetStats();
+    // No work layer by default: these tests are about the protocol, and an
+    // uninstalled work layer means "complete immediately".
+    SetWorkFn(nullptr);
+  }
+
+  void TearDown() override {
+    SetWorkFn(nullptr);  // don't leak an installed fake into other tests
+    vmsdk::ValkeyTest::TearDown();
   }
 
   // Stand-in for the opaque context core passes in. Never dereferenced by the
@@ -133,7 +142,7 @@ TEST_F(DefragTest, PollsDeadline) {
   OnGlobalDefragCallback(FakeDefragCtx());
 
   EXPECT_EQ(GetStats().deadline_checks, 1u);
-  EXPECT_EQ(GetStats().deadline_stops, 0u);
+  EXPECT_EQ(GetStats().incomplete_returns, 0u);
 }
 
 // Finishing a pass MUST store a cursor of 0. That zero is the only thing that
@@ -150,35 +159,60 @@ TEST_F(DefragTest, CompletesPassWhenTimeRemains) {
   EXPECT_EQ(GetStats().completed_passes, 1u);
 }
 
-// The mirror image: out of time with work outstanding must store a NON-zero
-// cursor, which is how core learns to call us again, and must not be counted as
-// a completed pass.
-TEST_F(DefragTest, YieldsAndSavesCursorOnDeadline) {
+// This file owns the protocol, not the work. Whatever the installed work layer
+// returns must be handed to core verbatim: a non-zero result means "call me
+// again" and must not be recorded as a completed pass.
+TEST_F(DefragTest, PassesWorkLayerCursorThroughToCore) {
   ExpectCursorGet(0);
-  ExpectDeadline(/*stop=*/true);
-  EXPECT_CALL(*kMockValkeyModule,
-              DefragCursorSet(FakeDefragCtx(), testing::Ne(0u)))
+  ExpectDeadline(false);
+  EXPECT_CALL(*kMockValkeyModule, DefragCursorSet(FakeDefragCtx(), 12345u))
       .WillOnce(Return(VALKEYMODULE_OK));
+  SetWorkFn([](uint64_t, bool (*)(void *), void *) -> uint64_t {
+    return 12345;  // work layer says: more to do
+  });
 
   OnGlobalDefragCallback(FakeDefragCtx());
 
-  EXPECT_EQ(GetStats().deadline_stops, 1u);
   EXPECT_EQ(GetStats().completed_passes, 0u);
 }
 
-// A resumed invocation sees the position it saved earlier and must carry it
-// forward rather than restart. Saving cursor 41 then yielding again should
-// advance past 41, not reset to a fresh value.
-TEST_F(DefragTest, ResumesFromStoredCursor) {
+// The cursor core stored must reach the work layer unchanged; that value is the
+// only way a resumed pass knows where it was.
+TEST_F(DefragTest, HandsStoredCursorToWorkLayer) {
   ExpectCursorGet(41);
-  ExpectDeadline(/*stop=*/true);
-  EXPECT_CALL(*kMockValkeyModule, DefragCursorSet(FakeDefragCtx(), 42u))
-      .WillOnce(Return(VALKEYMODULE_OK));
+  ExpectDeadline(false);
+  EXPECT_CALL(*kMockValkeyModule, DefragCursorSet(FakeDefragCtx(), _))
+      .WillRepeatedly(Return(VALKEYMODULE_OK));
+  static uint64_t seen = 0;
+  seen = 0;
+  SetWorkFn([](uint64_t cursor_in, bool (*)(void *), void *) -> uint64_t {
+    seen = cursor_in;
+    return 0;
+  });
 
   OnGlobalDefragCallback(FakeDefragCtx());
 
+  EXPECT_EQ(seen, 41u) << "work layer must receive the cursor core stored";
   EXPECT_EQ(GetStats().cursor_reads, 1u);
-  EXPECT_EQ(GetStats().deadline_stops, 1u);
+}
+
+// The work layer is handed a deadline predicate so it can poll core's deadline
+// between chunks. Verify it is wired to the real DefragShouldStop.
+TEST_F(DefragTest, WorkLayerCanPollTheDeadline) {
+  ExpectCursorGet(0);
+  ExpectDeadline(/*stop=*/true);
+  EXPECT_CALL(*kMockValkeyModule, DefragCursorSet(FakeDefragCtx(), _))
+      .WillRepeatedly(Return(VALKEYMODULE_OK));
+  static bool observed = false;
+  observed = false;
+  SetWorkFn([](uint64_t, bool (*should_stop)(void *), void *arg) -> uint64_t {
+    observed = should_stop(arg);
+    return 0;
+  });
+
+  OnGlobalDefragCallback(FakeDefragCtx());
+
+  EXPECT_TRUE(observed) << "predicate must report the deadline core set";
 }
 
 // If core provides no cursor (DefragCursorGet fails), the callback cannot
@@ -230,7 +264,7 @@ TEST_F(DefragTest, ResetStatsClearsCounters) {
   EXPECT_EQ(stats.callback_invocations, 0u);
   EXPECT_EQ(stats.cursor_reads, 0u);
   EXPECT_EQ(stats.deadline_checks, 0u);
-  EXPECT_EQ(stats.deadline_stops, 0u);
+  EXPECT_EQ(stats.incomplete_returns, 0u);
   EXPECT_EQ(stats.completed_passes, 0u);
 }
 

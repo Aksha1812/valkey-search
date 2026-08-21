@@ -322,8 +322,9 @@ absl::Status StringPoolStats(ValkeyModuleCtx *ctx, vmsdk::ArgsIterator &itr) {
 //   callback_invocations - core reached our callback at all
 //   cursor_reads         - core handed us a usable persistent cursor
 //   deadline_checks      - we polled the deadline
-//   deadline_stops       - the deadline fired and we yielded mid-pass
-//   completed_passes     - we finished and reset the cursor to 0 ("done")
+//   incomplete_returns   - returned with work outstanding (cursor left
+//   non-zero) completed_passes     - we finished and reset the cursor to 0
+//   ("done")
 //
 // RESET zeroes the counters so a test can measure a specific window.
 absl::Status DefragStats(ValkeyModuleCtx *ctx, vmsdk::ArgsIterator &itr) {
@@ -345,7 +346,7 @@ absl::Status DefragStats(ValkeyModuleCtx *ctx, vmsdk::ArgsIterator &itr) {
       {"callback_invocations", stats.callback_invocations},
       {"cursor_reads", stats.cursor_reads},
       {"deadline_checks", stats.deadline_checks},
-      {"deadline_stops", stats.deadline_stops},
+      {"incomplete_returns", stats.incomplete_returns},
       {"completed_passes", stats.completed_passes},
   };
   ValkeyModule_ReplyWithArray(ctx, 2 * std::size(fields));

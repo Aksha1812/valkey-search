@@ -55,6 +55,8 @@ set(SRCS_VALKEY_SEARCH
     ${CMAKE_CURRENT_LIST_DIR}/attribute.h
     ${CMAKE_CURRENT_LIST_DIR}/defrag.cc
     ${CMAKE_CURRENT_LIST_DIR}/defrag.h
+    ${CMAKE_CURRENT_LIST_DIR}/defrag_coordinator.cc
+    ${CMAKE_CURRENT_LIST_DIR}/defrag_coordinator.h
     ${CMAKE_CURRENT_LIST_DIR}/valkey_search.cc
     ${CMAKE_CURRENT_LIST_DIR}/valkey_search.h
     ${CMAKE_CURRENT_LIST_DIR}/valkey_search_options.cc

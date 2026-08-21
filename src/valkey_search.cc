@@ -30,6 +30,7 @@
 #include "src/coordinator/server.h"
 #include "src/coordinator/util.h"
 #include "src/defrag.h"
+#include "src/defrag_coordinator.h"
 #include "src/metrics.h"
 #include "src/rdb_serialization.h"
 #include "src/schema_manager.h"
@@ -1246,6 +1247,9 @@ absl::Status ValkeySearch::OnLoad(ValkeyModuleCtx *ctx,
   // Participate in active defrag for our non-keyspace memory. A no-op on cores
   // that don't expose the module global defrag API. See src/defrag.h.
   defrag::RegisterGlobalDefragCallback(ctx);
+  // Install reingestion as the work behind that callback. Done after the
+  // detached context exists, since the coordinator scans and queues through it.
+  defrag::InstallReingestionWorkFn();
 
   // Register all global configuration variables
   VMSDK_RETURN_IF_ERROR(ModuleConfigManager::Instance().Init(ctx));

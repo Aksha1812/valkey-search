@@ -37,10 +37,12 @@
 //     A callback that never stores 0 will be invoked forever, so resetting the
 //     cursor on completion is mandatory, not optional.
 //
-// This file implements the protocol end of that contract. It deliberately does
-// no index work: the sampling and rebuild path (reingestion) and the jemalloc
-// tcache interaction are handled separately. What lives here is the part core
-// talks to, kept small so it is easy to reason about and to test.
+// This file implements the protocol end of that contract and nothing else: read
+// the cursor, run a bounded amount of work, hand a cursor back. The work itself
+// (scanning, reingestion, the jemalloc tcache interaction) lives behind the
+// WorkFn seam below, in defrag_coordinator.h. Splitting them keeps this file
+// testable with no reingestion machinery and the coordinator testable with no
+// module API.
 namespace valkey_search::defrag {
 
 // Counters describing what the global defrag callback did. Every field is
@@ -56,9 +58,11 @@ struct Stats {
   uint64_t cursor_reads = 0;
   // Number of times we polled the deadline via DefragShouldStop.
   uint64_t deadline_checks = 0;
-  // Number of times DefragShouldStop reported the deadline had passed, i.e. we
-  // were asked to yield the main thread mid-pass.
-  uint64_t deadline_stops = 0;
+  // Number of invocations that returned with work still outstanding, i.e.
+  // stored a non-zero cursor so core would call back. This layer cannot tell
+  // whether that was due to the deadline, a spent budget, or background work
+  // still draining; the work layer's own counters distinguish those.
+  uint64_t incomplete_returns = 0;
   // Number of times we finished a pass and reset the cursor to 0 ("done").
   uint64_t completed_passes = 0;
 };
@@ -75,6 +79,27 @@ void ResetStats();
 // Returns 0; the "more work" signal for global callbacks travels through the
 // cursor, not the return value (see the contract above).
 int OnGlobalDefragCallback(ValkeyModuleDefragCtx *ctx);
+
+// The work layer behind the callback.
+//
+// This file owns the protocol core sees (cursor in, bounded work, cursor out).
+// What that work actually is - reingesting index entries - lives in
+// defrag_coordinator.h. The two are joined by this function pointer rather than
+// a direct call, so each can be tested in isolation: the protocol with no
+// reingestion behind it, the coordinator with no module API in front of it.
+//
+//   cursor_in   - the cursor core persisted for us (0 starts a new pass).
+//   should_stop - deadline predicate; call it between chunks of work.
+//   arg         - opaque argument to pass to should_stop.
+//
+// Returns the cursor to store back: non-zero to be called again, 0 for done.
+using WorkFn = uint64_t (*)(uint64_t cursor_in, bool (*should_stop)(void *),
+                            void *arg);
+
+// Install the work layer. With none installed every pass reports done
+// immediately, which is the correct behaviour for a build that does no
+// reingestion rather than an error.
+void SetWorkFn(WorkFn fn);
 
 // Register OnGlobalDefragCallback with core.
 //
