@@ -1,38 +1,26 @@
 {
-  "_comment": "Reviewer pools for auto-assignment on new PRs. Every entry must have collaborator access, otherwise a review cannot be requested from them. Edit this file to change the pools; no workflow change is needed.",
+  "_comment": "FORK-TEST ONLY pools. Contains no real reviewers on purpose, so nobody is notified during testing. Real pools live on the dev branch slash-commands-multi-and-auto-assign.",
   "firstPass": [
-    "mnunberg1",
     "Aksha1812",
-    "boda26",
-    "Frank-Gu-81",
-    "mohanrajendran",
-    "VoletiRam",
-    "neerajr0",
-    "chinguyen21"
+    "fp-fake-aaa-zzz",
+    "fp-fake-bbb-zzz"
   ],
   "maintainers": [
-    "allenss-amazon",
-    "BCathcart",
-    "yairgott",
-    "KarthikSubbarao"
+    "mt-fake-aaa-zzz",
+    "mt-fake-bbb-zzz",
+    "mt-fake-ccc-zzz"
   ],
-  "_seedCountsComment": "Used once, to initialize the assignment-count ledger (the REVIEWER_ASSIGNMENT_LEDGER repository variable) the first time the workflow runs. These are the per-person totals from the one-time assignment of the existing open PRs, so the ledger starts from the real distribution. After initialization the ledger is maintained by the workflow and this map is ignored. A pool member missing from the ledger later (e.g. added to a pool above) starts at the lowest count in their pool.",
+  "_seedCountsComment": "Fork-test seed values.",
   "seedCounts": {
     "firstPass": {
-      "mnunberg1": 10,
-      "Aksha1812": 8,
-      "boda26": 9,
-      "Frank-Gu-81": 9,
-      "mohanrajendran": 9,
-      "VoletiRam": 8,
-      "neerajr0": 9,
-      "chinguyen21": 9
+      "Aksha1812": 5,
+      "fp-fake-aaa-zzz": 7,
+      "fp-fake-bbb-zzz": 3
     },
     "maintainers": {
-      "allenss-amazon": 16,
-      "BCathcart": 19,
-      "yairgott": 17,
-      "KarthikSubbarao": 19
+      "mt-fake-aaa-zzz": 4,
+      "mt-fake-bbb-zzz": 2,
+      "mt-fake-ccc-zzz": 6
     }
   }
 }
