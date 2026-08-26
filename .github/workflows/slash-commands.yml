@@ -8,6 +8,8 @@ name: Slash Commands
 #   /resolves <issue-number>   — append "Resolves #N" to the PR body
 #   /rerun                     — re-run all failed CI jobs for this PR
 #   /duplicates                — find potential duplicate issues/PRs
+#   /assign-reviewers          — (re)assign reviewers now; remove the
+#                                auto-assigned-reviewers label first to reassign
 #
 # The label and reviewer commands accept a comma-separated list, e.g. `/label bug, docs`.
 
@@ -42,6 +44,13 @@ jobs:
       github.event_name == 'pull_request_target' &&
       (github.event.action == 'opened' || github.event.action == 'ready_for_review')
     runs-on: ubuntu-latest
+    # Serialize assignment runs: the ledger is a single variable updated
+    # read-modify-write, so two PRs opening at once could otherwise both read the
+    # same counts and one increment would be lost. cancel-in-progress: false queues
+    # the second run instead of dropping it.
+    concurrency:
+      group: reviewer-assignment-ledger
+      cancel-in-progress: false
     steps:
       - uses: actions/github-script@v7
         env:
@@ -49,15 +58,26 @@ jobs:
           # GITHUB_TOKEN cannot access the variables API, so without this secret
           # the job cannot keep counts and falls back to a PR-number rotation.
           LEDGER_TOKEN: ${{ secrets.REVIEWER_LEDGER_TOKEN }}
-          # Fork-demo only: count picked reviewers so the ledger update is
-          # observable when the test pool is all non-existent logins.
-          LEDGER_DEMO: '1'
+          LEDGER_DEMO: '1'  # fork demo only: makes picks observable on a single-collaborator fork
         with:
-          script: |
-            const pr = context.payload.pull_request;
-            if (pr.draft) return;
-
+          script: &assign_script |
             const { owner, repo } = context.repo;
+
+            // Resolve the PR from either trigger. pull_request_target carries it
+            // directly; the /assign-reviewers command arrives as an issue_comment,
+            // so fetch it and only proceed for that command.
+            let pr = context.payload.pull_request;
+            if (!pr) {
+              if (!context.payload.issue || !context.payload.issue.pull_request) return;
+              if (!/^\/assign-reviewers\b/.test((context.payload.comment.body || '').trim())) return;
+              const { data } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: context.payload.issue.number,
+              });
+              pr = data;
+            }
+            if (pr.draft) return;
 
             let pools;
             try {
@@ -80,19 +100,23 @@ jobs:
               return;
             }
 
-            // Skip if a rotation member is already on the PR, so re-opening or
-            // flipping draft state does not reassign.
-            const existing = new Set((pr.requested_reviewers || []).map(r => r.login));
-            const inRotation = [...firstPassPool, ...maintainerPool];
-            if (inRotation.some(login => existing.has(login))) return;
+            // Assign only once per PR. A marker label is the durable signal:
+            // unlike the requested-reviewers list it survives /remove-reviewer,
+            // a submitted review (which clears the request), and draft/ready
+            // toggles — so a later ready_for_review can't reassign. Remove the
+            // label to deliberately force a fresh assignment.
+            const MARKER_LABEL = 'auto-assigned-reviewers';
+            if ((pr.labels || []).some(l => l.name === MARKER_LABEL)) return;
 
             // Lifetime assignment counts live in a repository variable so each
             // new PR goes to the eligible pool member with the fewest
             // assignments; ties break by pool order. Skipping the author leaves
             // their count low, so they are first in line for the next PR they
-            // can take — skipped turns are repaid rather than lost. The variable
-            // is created on first use, seeded from seedCounts in
-            // reviewer-pools.json.
+            // can take — skipped turns are repaid rather than lost. To start the
+            // counts from the current PR distribution, create the variable once
+            // before first use (see CONTRIBUTING.md); otherwise everyone starts
+            // at zero. An optional "seedCounts" map in reviewer-pools.json is
+            // also honored on first use if present.
             //
             // The variables API is not reachable with GITHUB_TOKEN, so a
             // dedicated PAT (REVIEWER_LEDGER_TOKEN) is used for it. If the secret
@@ -215,16 +239,17 @@ jobs:
               }
             }
 
+            // Fork-demo (LEDGER_DEMO=1): the fake pool logins are not collaborators
+            // so no request lands; treat the picks as assigned so the comment,
+            // ledger increment, and marker label are all observable on the fork.
+            if (process.env.LEDGER_DEMO === '1' && assigned.length === 0) {
+              assigned.push(firstPass);
+              if (maintainer !== firstPass) assigned.push(maintainer);
+            }
             // Count only the assignments that actually landed, then persist.
-            // Fork-demo mode (LEDGER_DEMO=1) counts the picked reviewers even
-            // when the fake test logins don't land, so the ledger update is
-            // observable on a single-collaborator fork.
-            const demo = process.env.LEDGER_DEMO === '1';
-            const countFirstPass = demo || assigned.includes(firstPass);
-            const countMaintainer = demo || assigned.includes(maintainer);
-            if (ledger && (countFirstPass || countMaintainer)) {
-              if (countFirstPass) ledger.firstPass[firstPass] += 1;
-              if (countMaintainer) ledger.maintainers[maintainer] += 1;
+            if (ledger && assigned.length > 0) {
+              if (assigned.includes(firstPass)) ledger.firstPass[firstPass] += 1;
+              if (assigned.includes(maintainer)) ledger.maintainers[maintainer] += 1;
               try {
                 const res = ledgerExists
                   ? await ledgerFetch('PATCH', varPath + '/' + LEDGER_VAR,
@@ -266,6 +291,41 @@ jobs:
               issue_number: pr.number,
               body: lines.join('\n'),
             });
+
+            // Mark the PR so a later ready_for_review — or removed reviewers —
+            // can't trigger a second assignment. addLabels creates the label if
+            // it does not already exist.
+            try {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: pr.number,
+                labels: [MARKER_LABEL],
+              });
+            } catch (e) {
+              core.warning('Could not add ' + MARKER_LABEL + ' label: ' + e.message);
+            }
+
+  # Manually (re)assign reviewers via the /assign-reviewers comment command.
+  # Useful to backfill PRs opened before auto-assignment existed. Runs the exact
+  # same script as auto-assign-reviewers (shared YAML anchor); remove the
+  # auto-assigned-reviewers label first to force a fresh assignment.
+  assign-reviewers-command:
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/assign-reviewers')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: reviewer-assignment-ledger
+      cancel-in-progress: false
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          LEDGER_TOKEN: ${{ secrets.REVIEWER_LEDGER_TOKEN }}
+          LEDGER_DEMO: '1'  # fork demo only: makes picks observable on a single-collaborator fork
+        with:
+          script: *assign_script
 
   # Auto-check for duplicates when an issue or PR is opened
   check-duplicates:
