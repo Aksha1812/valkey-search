@@ -49,6 +49,9 @@ jobs:
           # GITHUB_TOKEN cannot access the variables API, so without this secret
           # the job cannot keep counts and falls back to a PR-number rotation.
           LEDGER_TOKEN: ${{ secrets.REVIEWER_LEDGER_TOKEN }}
+          # Fork-demo only: count picked reviewers so the ledger update is
+          # observable when the test pool is all non-existent logins.
+          LEDGER_DEMO: '1'
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -213,9 +216,15 @@ jobs:
             }
 
             // Count only the assignments that actually landed, then persist.
-            if (ledger && assigned.length > 0) {
-              if (assigned.includes(firstPass)) ledger.firstPass[firstPass] += 1;
-              if (assigned.includes(maintainer)) ledger.maintainers[maintainer] += 1;
+            // Fork-demo mode (LEDGER_DEMO=1) counts the picked reviewers even
+            // when the fake test logins don't land, so the ledger update is
+            // observable on a single-collaborator fork.
+            const demo = process.env.LEDGER_DEMO === '1';
+            const countFirstPass = demo || assigned.includes(firstPass);
+            const countMaintainer = demo || assigned.includes(maintainer);
+            if (ledger && (countFirstPass || countMaintainer)) {
+              if (countFirstPass) ledger.firstPass[firstPass] += 1;
+              if (countMaintainer) ledger.maintainers[maintainer] += 1;
               try {
                 const res = ledgerExists
                   ? await ledgerFetch('PATCH', varPath + '/' + LEDGER_VAR,
