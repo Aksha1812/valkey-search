@@ -1,0 +1,84 @@
+# Reviewer Dashboard
+#
+# Every ~5 minutes, regenerate the "Reviewer-Dashboard" wiki pages from the
+# repository's open PRs. The pages show, per reviewer, which PRs they are on and
+# whether they were assigned automatically (by the auto-assign workflow) or by
+# hand, sorted by a human-maintained priority. Three columns on the master page
+# — Priority, Done, Notes — are owned by humans and preserved across updates.
+#
+# One-time setup:
+#   * Enable the wiki (Settings → Features → Wikis) and create any one page in
+#     the UI so the .wiki.git repo exists.
+#   * That's it — this uses the built-in GITHUB_TOKEN. If org policy blocks
+#     GITHUB_TOKEN wiki pushes, swap it for a PAT/App token with contents:write
+#     in the checkout+push steps (see WIKI_TOKEN below).
+
+name: Reviewer Dashboard
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # best-effort; GitHub may run this every 5–15 min
+  workflow_dispatch:          # manual "Run workflow" button
+    inputs:
+      target_repo:
+        description: 'Read PRs from this owner/name instead of this repo (demo only; wiki written is still this repo).'
+        required: false
+        default: ''
+
+# Never let two updater runs push to the wiki at once.
+concurrency:
+  group: reviewer-dashboard
+  cancel-in-progress: false
+
+permissions:
+  contents: write     # push to the .wiki.git repo
+  pull-requests: read
+  issues: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Repo checkout — for the builder script and .github/reviewer-pools.json.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Clone the wiki repo alongside it so the builder can read the previous
+      # page (to preserve human edits) and write the new pages.
+      - name: Clone wiki
+        env:
+          WIKI_TOKEN: ${{ secrets.DASHBOARD_WIKI_TOKEN || github.token }}
+        run: |
+          git clone "https://x-access-token:${WIKI_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki
+          cd wiki
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Build dashboard pages
+        uses: actions/github-script@v7
+        env:
+          WIKI_DIR: wiki
+          POOLS_PATH: .github/reviewer-pools.json
+          TARGET_REPO: ${{ inputs.target_repo }}
+        with:
+          script: |
+            const build = require('./.github/scripts/build-reviewer-dashboard.js');
+            await build({ github, context, core });
+
+      # Commit + push only if something actually changed. Rebase first so a
+      # concurrent human wiki edit isn't clobbered.
+      - name: Commit and push
+        working-directory: wiki
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No dashboard changes."
+            exit 0
+          fi
+          git commit -m "Update reviewer dashboard ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash && git push && exit 0
+            echo "Push attempt $attempt failed; retrying…"; sleep 5
+          done
+          echo "Failed to push wiki after retries." >&2
+          exit 1
