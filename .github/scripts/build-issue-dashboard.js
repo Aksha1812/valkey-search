@@ -429,9 +429,14 @@ function renderBody(prs, state, pools, now, targetLabel) {
   L.push('```');
   L.push('/claim 1234        add the PR to your queue / put your name on it');
   L.push('/unclaim 1234      remove your claim');
-  L.push('/reviewed 1234     mark that you have reviewed it');
+  L.push('/reviewed 1234     mark reviewed (only if you did NOT approve on GitHub)');
   L.push('/unreviewed 1234   un-mark it');
   L.push('```');
+  L.push('');
+  L.push('> **Approving a PR on GitHub already marks it Reviewed ✅ for you — you do not need `/reviewed`.** '
+    + 'And if you later withdraw or change that approval, it clears itself again. The board picks this up on '
+    + 'the next ~5-min refresh, or immediately if anyone runs `/update`. `/reviewed` / `/unreviewed` are only for '
+    + 'a review you did *without* a formal GitHub approval.');
   L.push('');
 
   // Column legend — one collapsible per column, each state on its own line so
@@ -472,6 +477,8 @@ function renderBody(prs, state, pools, now, targetLabel) {
   legend('Reviewed <sub>(Your queue)</sub>', [
     '✅ you approved the PR on GitHub **or** ran `/reviewed <#>` — either is enough.',
     '☐ not yet — this is what counts toward **awaiting you**.',
+    'Approving on GitHub sets ✅ automatically (no `/reviewed` needed); withdrawing or changing that approval clears it again. This syncs on the next ~5-min refresh, or right away with `/update`.',
+    '`/reviewed` / `/unreviewed` are manual overrides for a review done *without* a GitHub approval.',
     '`/needs-review <#>` clears the manual `/reviewed` flag for the PR\'s maintainers (a standing GitHub approval still shows ✅ until it\'s dismissed).',
   ]);
   legend('Checks <sub>(CI + merge health)</sub>', [
