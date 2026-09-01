@@ -87,6 +87,13 @@ function mapState(state) {
 const statusEmoji = s =>
   s === 'Approved' ? '✅' : s === 'Changes req.' ? '🔴' : s === 'Commented' ? '💬' : '⏳';
 
+// AI / automated reviewers to exclude — they aren't people who owe a review.
+// GitHub Apps post as "<name>[bot]"; also list bare logins seen in reviews.
+const BOT_LOGINS = new Set(['coderabbitai', 'coderabbitai[bot]', 'greptile',
+  'greptileai', 'greptile-apps[bot]', 'greptileai[bot]', 'github-actions[bot]',
+  'sonarcloud[bot]', 'codecov[bot]', 'dependabot[bot]']);
+const isBot = login => !login || /\[bot\]$/i.test(login) || BOT_LOGINS.has(String(login).toLowerCase());
+
 // Turn a raw GraphQL PR node into the shape the renderer consumes.
 function shape(node, firstPassPool, maintainerPool) {
   const author = node.author && node.author.login ? node.author.login : '(ghost)';
@@ -102,12 +109,12 @@ function shape(node, firstPassPool, maintainerPool) {
 
   const requested = (node.reviewRequests.nodes || [])
     .map(r => r.requestedReviewer && r.requestedReviewer.login)
-    .filter(Boolean);
+    .filter(l => l && !isBot(l));
 
   const latest = {};
   for (const r of (node.reviews.nodes || [])) {
     const login = r.author && r.author.login;
-    if (!login) continue;
+    if (!login || isBot(login)) continue;
     if (!latest[login] || (r.submittedAt || '') >= (latest[login].submittedAt || '')) latest[login] = r;
   }
 
@@ -227,6 +234,8 @@ function priorityOf(state, n) {
   if (state.priority[n] != null) return state.priority[n];
   return null;
 }
+// Sort/group bucket: unset priority sorts with P4.
+const bucket = p => (p == null || p === 4) ? 4 : p;
 
 function renderBody(prs, state, pools, now, targetLabel) {
   const L = [];
@@ -252,7 +261,6 @@ function renderBody(prs, state, pools, now, targetLabel) {
   }
   const reviewerOrder = [...pools.firstPass, ...pools.maintainers,
     ...[...reviewerPRs.keys()].filter(l => !pools.firstPass.includes(l) && !pools.maintainers.includes(l)).sort()];
-  const anchor = login => login.toLowerCase();
 
   L.push(`# 🗂️ Reviewer Triage Board`);
   L.push('');
@@ -295,26 +303,46 @@ function renderBody(prs, state, pools, now, targetLabel) {
   L.push('</details>');
   L.push('');
 
-  // Find-your-queue index: per-reviewer open counts + jump / live-search links.
-  // This is how a reviewer answers "how many PRs are left for me to review".
-  L.push('## 🔎 Find your queue');
+  // Column legend.
+  L.push('<details><summary>ℹ️ <b>Legend</b> — what the columns mean</summary>');
   L.push('');
-  L.push('_Click **↓** to jump to your section, or **search** for a live GitHub-filtered list. Tip: press <kbd>Ctrl/⌘+F</kbd> and type your `@handle`._');
+  L.push('- **Via / How** — how a reviewer landed on the PR: 🤖 **auto** (picked by the auto-assign bot, read from its comment) · ✋ **manual** (requested by hand). The PR-level **Via** is `Auto`, `Manual`, or `Mixed`.');
+  L.push('- **Status** — that reviewer\'s latest review: ✅ approved · 🔴 changes requested · 💬 commented · ⏳ pending.');
+  L.push('- **Claimed** — someone ran `/claim <#>` to signal "I\'m taking this", independent of the official review request.');
+  L.push('- **Done** — ✅ marked reviewed via `/done <#>`. AI reviewers (CodeRabbit, Greptile, …) are excluded from all counts.');
+  L.push('</details>');
   L.push('');
-  L.push('| Reviewer | Assigned | Open to review | Jump | On GitHub |');
-  L.push('|----------|:--------:|:--------------:|:----:|:---------:|');
+
+  // Your queue: expand your name to see your PRs, split by how you were added.
+  // (In-issue heading anchors are unreliable, so this uses inline collapsibles
+  // instead of jump links — expand right here.)
+  L.push('## 🔎 Your queue');
+  L.push('');
+  L.push('_Expand your name to see your PRs and how many are left. 🤖 = auto-assigned to you · ✋ = requested by hand. Clear them with `/done <#>` in a comment._');
+  L.push('');
   for (const login of reviewerOrder) {
     const items = reviewerPRs.get(login);
     if (!items || !items.length) continue;
+    const auto = items.filter(it => it.e.via === 'auto');
+    const manual = items.filter(it => it.e.via === 'manual');
     const open = items.filter(it => !state.done[it.pr.number]).length;
-    const gh = `https://github.com/${targetLabel}/pulls?q=` + encodeURIComponent(`is:open is:pr review-requested:${login}`);
-    L.push(`| @${login} | ${items.length} | ${open ? '**' + open + '**' : 0} | [↓](#${anchor(login)}) | [search](${gh}) |`);
+    const sortFn = (a, b) => bucket(priorityOf(state, a.pr.number)) - bucket(priorityOf(state, b.pr.number)) || a.pr.number - b.pr.number;
+    auto.sort(sortFn); manual.sort(sortFn);
+    L.push(`<details><summary><b>@${login}</b> — ${open} open · 🤖 ${auto.length} auto · ✋ ${manual.length} manual</summary>`);
+    L.push('');
+    L.push('| PR | Title | How | Priority | Status | Done |');
+    L.push('|----|-------|:--:|:--------:|:------:|:----:|');
+    for (const { pr, e } of [...auto, ...manual]) {
+      const p = priorityOf(state, pr.number);
+      L.push(`| ${prLink(pr)} | ${esc(pr.title)} | ${e.via === 'auto' ? '🤖' : '✋'} | ${p == null ? '—' : 'P' + p} | ${statusEmoji(e.status)} ${e.status} | ${state.done[pr.number] ? '✅' : '☐'} |`);
+    }
+    L.push('');
+    L.push('</details>');
   }
   L.push('');
 
-  // Priority-grouped tables.
+  // Priority-grouped tables (overall triage view).
   const groups = [[1, 'P1 — launch blocker'], [2, 'P2'], [3, 'P3'], [4, 'P4 / unset']];
-  const bucket = p => (p == null || p === 4) ? 4 : p;
   for (const [g, title] of groups) {
     const rows = prs.filter(pr => bucket(priorityOf(state, pr.number)) === g)
       .sort((a, b) => a.number - b.number);
@@ -333,30 +361,6 @@ function renderBody(prs, state, pools, now, targetLabel) {
     }
     L.push('');
   }
-
-  // Per-reviewer queues (the "views"). Each gets a heading so the index above
-  // can jump straight to it; the table is collapsed underneath.
-  L.push('## 👥 Per-reviewer queues');
-  L.push('');
-  const seen = new Set();
-  for (const login of reviewerOrder) {
-    if (seen.has(login)) continue; seen.add(login);
-    const items = reviewerPRs.get(login);
-    if (!items || !items.length) continue;
-    const openCount = items.filter(it => !state.done[it.pr.number]).length;
-    items.sort((a, b) => (bucket(priorityOf(state, a.pr.number))) - (bucket(priorityOf(state, b.pr.number))) || a.pr.number - b.pr.number);
-    L.push(`### @${login}`);
-    L.push(`<details><summary><b>${items.length} PR(s), ${openCount} open</b> — expand</summary>`);
-    L.push('');
-    L.push('| PR | Title | Via | Status | Done |');
-    L.push('|----|-------|:---:|:------:|:----:|');
-    for (const { pr, e } of items) {
-      L.push(`| ${prLink(pr)} | ${esc(pr.title)} | ${e.via === 'auto' ? '🤖' : '✋'} | ${statusEmoji(e.status)} ${e.status} | ${state.done[pr.number] ? '✅' : '☐'} |`);
-    }
-    L.push('');
-    L.push('</details>');
-  }
-  L.push('');
 
   // Recent activity log.
   if (state.log && state.log.length) {
