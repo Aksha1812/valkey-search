@@ -183,9 +183,12 @@ function loadState(body) {
     const json = body.slice(i + STATE_OPEN.length, j).trim();
     const p = JSON.parse(json);
     // reviewed: { prNum: { login: true } }   claims: { prNum: [login, …] }
+    // Strip any bare "@login" left in historical log lines (older runs wrote
+    // them); a re-rendered "@login" would keep pinging that person every run.
+    const log = (p.log || []).map(l => String(l).replace(/@([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)/g, '$1'));
     return {
       notes: p.notes || {}, priority: p.priority || {}, stage: p.stage || {},
-      reviewed: p.reviewed || {}, claims: p.claims || {}, log: p.log || [],
+      reviewed: p.reviewed || {}, claims: p.claims || {}, log,
     };
   } catch (e) {
     return empty;
