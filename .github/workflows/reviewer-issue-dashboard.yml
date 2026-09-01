@@ -51,7 +51,7 @@ jobs:
           DASHBOARD_ISSUE: ${{ vars.DASHBOARD_ISSUE }}
           TARGET_REPO: ${{ inputs.target_repo || vars.TARGET_REPO }}
           POOLS_PATH: .github/reviewer-pools.json
-          RELEASE_LABEL: '1.3.0'
+          RELEASE_LABEL: ''
         with:
           script: |
             const build = require('./.github/scripts/build-issue-dashboard.js');
