@@ -241,6 +241,19 @@ function renderBody(prs, state, pools, now, targetLabel) {
     if (state.done[pr.number]) doneCount++;
   }
 
+  // Build reviewer → their PRs once (used by both the index and the per-reviewer
+  // views). anchor() must match the GitHub heading slug: lowercased login.
+  const reviewerPRs = new Map();
+  for (const pr of prs) {
+    for (const e of [...pr.firstPass, ...pr.maintainers, ...pr.other]) {
+      if (!reviewerPRs.has(e.login)) reviewerPRs.set(e.login, []);
+      reviewerPRs.get(e.login).push({ pr, e });
+    }
+  }
+  const reviewerOrder = [...pools.firstPass, ...pools.maintainers,
+    ...[...reviewerPRs.keys()].filter(l => !pools.firstPass.includes(l) && !pools.maintainers.includes(l)).sort()];
+  const anchor = login => login.toLowerCase();
+
   L.push(`# 🗂️ Reviewer Triage Board`);
   L.push('');
   L.push([
@@ -282,6 +295,23 @@ function renderBody(prs, state, pools, now, targetLabel) {
   L.push('</details>');
   L.push('');
 
+  // Find-your-queue index: per-reviewer open counts + jump / live-search links.
+  // This is how a reviewer answers "how many PRs are left for me to review".
+  L.push('## 🔎 Find your queue');
+  L.push('');
+  L.push('_Click **↓** to jump to your section, or **search** for a live GitHub-filtered list. Tip: press <kbd>Ctrl/⌘+F</kbd> and type your `@handle`._');
+  L.push('');
+  L.push('| Reviewer | Assigned | Open to review | Jump | On GitHub |');
+  L.push('|----------|:--------:|:--------------:|:----:|:---------:|');
+  for (const login of reviewerOrder) {
+    const items = reviewerPRs.get(login);
+    if (!items || !items.length) continue;
+    const open = items.filter(it => !state.done[it.pr.number]).length;
+    const gh = `https://github.com/${targetLabel}/pulls?q=` + encodeURIComponent(`is:open is:pr review-requested:${login}`);
+    L.push(`| @${login} | ${items.length} | ${open ? '**' + open + '**' : 0} | [↓](#${anchor(login)}) | [search](${gh}) |`);
+  }
+  L.push('');
+
   // Priority-grouped tables.
   const groups = [[1, 'P1 — launch blocker'], [2, 'P2'], [3, 'P3'], [4, 'P4 / unset']];
   const bucket = p => (p == null || p === 4) ? 4 : p;
@@ -304,26 +334,19 @@ function renderBody(prs, state, pools, now, targetLabel) {
     L.push('');
   }
 
-  // Per-reviewer collapsible queues (the "views").
+  // Per-reviewer queues (the "views"). Each gets a heading so the index above
+  // can jump straight to it; the table is collapsed underneath.
   L.push('## 👥 Per-reviewer queues');
   L.push('');
-  const reviewerPRs = new Map();
-  for (const pr of prs) {
-    for (const e of [...pr.firstPass, ...pr.maintainers, ...pr.other]) {
-      if (!reviewerPRs.has(e.login)) reviewerPRs.set(e.login, []);
-      reviewerPRs.get(e.login).push({ pr, e });
-    }
-  }
-  const order = [...pools.firstPass, ...pools.maintainers,
-    ...[...reviewerPRs.keys()].filter(l => !pools.firstPass.includes(l) && !pools.maintainers.includes(l)).sort()];
   const seen = new Set();
-  for (const login of order) {
+  for (const login of reviewerOrder) {
     if (seen.has(login)) continue; seen.add(login);
     const items = reviewerPRs.get(login);
     if (!items || !items.length) continue;
     const openCount = items.filter(it => !state.done[it.pr.number]).length;
     items.sort((a, b) => (bucket(priorityOf(state, a.pr.number))) - (bucket(priorityOf(state, b.pr.number))) || a.pr.number - b.pr.number);
-    L.push(`<details><summary><b>@${login}</b> — ${items.length} PR(s), ${openCount} open</summary>`);
+    L.push(`### @${login}`);
+    L.push(`<details><summary><b>${items.length} PR(s), ${openCount} open</b> — expand</summary>`);
     L.push('');
     L.push('| PR | Title | Via | Status | Done |');
     L.push('|----|-------|:---:|:------:|:----:|');
