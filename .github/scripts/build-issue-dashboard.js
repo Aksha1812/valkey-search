@@ -5,10 +5,10 @@
 //      reviewer as auto-assigned (from the auto-assign bot comment) or manual,
 //      first-pass or maintainer, with their latest review status.
 //   2. Reads the dashboard issue's *comments*, which are one-line commands that
-//      anyone (no repo write access needed) can post: /done, /undone, /note,
-//      /priority, /claim, /unclaim. It applies them to the board state, then
-//      DELETES each processed command comment so the issue never accrues a pile
-//      of comments (that was the "page gets slow" risk).
+//      anyone (no repo write access needed) can post: /priority, /note, /stage,
+//      /update. It applies them to the board state, then DELETES each processed
+//      command comment so the issue never accrues a pile of comments (that was
+//      the "page gets slow" risk).
 //   3. Persists canonical human state in a hidden JSON block inside the issue
 //      body, so it survives every regeneration. Humans express *intent* via
 //      commands; the bot owns the *record*.
@@ -174,41 +174,51 @@ const STATE_OPEN = '<!--BOARD_STATE';
 const STATE_CLOSE = 'BOARD_STATE-->';
 
 function loadState(body) {
-  const empty = { done: {}, notes: {}, priority: {}, claims: {}, log: [] };
+  const empty = { notes: {}, priority: {}, stage: {}, log: [] };
   if (!body) return empty;
   const i = body.indexOf(STATE_OPEN);
   const j = body.indexOf(STATE_CLOSE);
   if (i === -1 || j === -1 || j < i) return empty;
   try {
     const json = body.slice(i + STATE_OPEN.length, j).trim();
-    const parsed = JSON.parse(json);
-    return Object.assign(empty, parsed);
+    const p = JSON.parse(json);
+    // Only carry forward the keys we still use — legacy done/claims are dropped.
+    return { notes: p.notes || {}, priority: p.priority || {}, stage: p.stage || {}, log: p.log || [] };
   } catch (e) {
     return empty;
   }
 }
 
+// Manual stage override aliases → canonical stage key (see STAGES below).
+const STAGE_ALIAS = {
+  review: 'review', ready: 'review',
+  changes: 'changes', 'changes-requested': 'changes',
+  maintainer: 'maintainer', 'maintainer-review': 'maintainer', maint: 'maintainer',
+  approved: 'approved', approve: 'approved',
+};
+
 // Parse one comment body for commands. Returns a list of {cmd, pr, arg, author}.
 // Supported (one per line):
-//   /done 1234        /undone 1234
-//   /claim 1234       /unclaim 1234
-//   /priority 1234 P2 (or just 2)
-//   /note 1234 free text...   (empty text clears the note)
-const CMD_RE = /^\s*\/(done|undone|claim|unclaim|priority|note)\s+#?(\d+)\b\s*(.*)$/i;
+//   /priority 1234 P2        (or just a bare number)
+//   /note 1234 free text     (empty text clears the note)
+//   /stage 1234 maintainer   (review|changes|maintainer|approved|auto)
+//   /update                  (no #; just refresh the board from live PR data)
+const CMD_RE = /^\s*\/(priority|note|stage)\s+#?(\d+)\b\s*(.*)$/i;
+const NOARG_RE = /^\s*\/(update|refresh)\b/i;
 
 function parseCommands(commentBody, author) {
   const out = [];
   for (const line of String(commentBody || '').split('\n')) {
     const m = line.match(CMD_RE);
-    if (!m) continue;
-    out.push({ cmd: m[1].toLowerCase(), pr: Number(m[2]), arg: m[3].trim(), author });
+    if (m) { out.push({ cmd: m[1].toLowerCase(), pr: Number(m[2]), arg: m[3].trim(), author }); continue; }
+    if (NOARG_RE.test(line)) out.push({ cmd: 'update', pr: null, arg: '', author });
   }
   return out;
 }
 
 // True if a comment was *trying* to be a command, so we can nudge the author
-// when it fails to parse (e.g. bare "/done" with no PR number).
-const CMD_WORD_RE = /^\s*\/(done|undone|claim|unclaim|priority|note)\b/im;
+// when it fails to parse (e.g. "/priority" with no PR number).
+const CMD_WORD_RE = /^\s*\/(priority|note|stage|update|refresh)\b/im;
 function looksLikeCommand(body) { return CMD_WORD_RE.test(String(body || '')); }
 const HINT_MARKER = '<!--HINT-->';
 
@@ -216,17 +226,6 @@ function applyCommand(state, c, now) {
   const n = c.pr;
   let msg = null;
   switch (c.cmd) {
-    case 'done': state.done[n] = true; msg = `@${c.author} marked #${n} done ✅`; break;
-    case 'undone': state.done[n] = false; msg = `@${c.author} reopened #${n}`; break;
-    case 'claim': {
-      const arr = state.claims[n] || (state.claims[n] = []);
-      if (!arr.includes(c.author)) arr.push(c.author);
-      msg = `@${c.author} claimed #${n} 🙋`; break;
-    }
-    case 'unclaim': {
-      state.claims[n] = (state.claims[n] || []).filter(l => l !== c.author);
-      msg = `@${c.author} unclaimed #${n}`; break;
-    }
     case 'priority': {
       const p = (c.arg.match(/[1-4]/) || [])[0];
       if (p) { state.priority[n] = Number(p); msg = `@${c.author} set #${n} → P${p}`; }
@@ -237,6 +236,15 @@ function applyCommand(state, c, now) {
       if (c.arg) { state.notes[n] = c.arg; msg = `@${c.author} noted #${n}: ${c.arg}`; }
       else { delete state.notes[n]; msg = `@${c.author} cleared note on #${n}`; }
       break;
+    case 'stage': {
+      const a = c.arg.toLowerCase().trim();
+      if (!a || a === 'auto' || a === 'clear') { delete state.stage[n]; msg = `@${c.author} reset #${n} stage to auto`; }
+      else if (STAGE_ALIAS[a]) { state.stage[n] = STAGE_ALIAS[a]; msg = `@${c.author} set #${n} → ${STAGES[STAGE_ALIAS[a]].label}`; }
+      // unknown stage word → no change, no log (avoids noise).
+      break;
+    }
+    case 'update':
+      msg = `@${c.author} refreshed the board 🔄`; break; // rebuild happens regardless
   }
   if (msg) {
     state.log.unshift(`\`${now}\` — ${msg}`);
@@ -265,17 +273,47 @@ function priorityOf(state, n) {
 // Sort/group bucket: unset priority sorts with P4.
 const bucket = p => (p == null || p === 4) ? 4 : p;
 
+// ── PR lifecycle stage ───────────────────────────────────────────────────────
+// The single "where is this PR" signal, derived from GitHub reviews. A human
+// can override it with /stage; the override wins until reset to auto.
+const STAGES = {
+  draft:      { label: 'Draft',                emoji: '📝' },
+  review:     { label: 'Ready to review',      emoji: '🆕' },
+  changes:    { label: 'Changes requested',    emoji: '🔴' },
+  maintainer: { label: 'Ready for maintainer', emoji: '🧑‍⚖️' },
+  approved:   { label: 'Approved',             emoji: '✅' },
+};
+function autoStage(pr) {
+  if (pr.isDraft) return 'draft';
+  const all = [...pr.firstPass, ...pr.maintainers];
+  if (all.some(e => e.status === 'Changes req.')) return 'changes';
+  if (pr.maintainers.some(e => e.status === 'Approved')) return 'approved';
+  if (pr.firstPass.some(e => e.status === 'Approved')) return 'maintainer';
+  return 'review';
+}
+function stageKey(pr, state) {
+  const ov = state.stage && state.stage[pr.number];
+  return (ov && STAGES[ov]) ? ov : autoStage(pr);
+}
+function stageCell(pr, state) {
+  const k = stageKey(pr, state);
+  const overridden = !!(state.stage && state.stage[pr.number] && STAGES[state.stage[pr.number]]);
+  return `${STAGES[k].emoji} ${STAGES[k].label}${overridden ? ' ✎' : ''}`;
+}
+
 function renderBody(prs, state, pools, now, targetLabel) {
   const L = [];
   const total = prs.length;
   const byPri = { 1: 0, 2: 0, 3: 0, 4: 0, none: 0 };
-  let needsFP = 0, stale = 0, doneCount = 0;
+  let needsFP = 0, stale = 0, approved = 0, readyMaint = 0;
   for (const pr of prs) {
     const p = priorityOf(state, pr.number);
     byPri[p == null ? 'none' : p]++;
     if (!pr.firstPass.length && !pr.isDraft) needsFP++;
     if (pr.stale) stale++;
-    if (state.done[pr.number]) doneCount++;
+    const sk = stageKey(pr, state);
+    if (sk === 'approved') approved++;
+    else if (sk === 'maintainer') readyMaint++;
   }
 
   // Build reviewer → their PRs once (used by both the index and the per-reviewer
@@ -298,8 +336,9 @@ function renderBody(prs, state, pools, now, targetLabel) {
     badge('P2', byPri[2], 'orange'),
     badge('P3', byPri[3], 'yellow'),
     badge('needs first-pass', needsFP, needsFP ? 'critical' : 'green'),
+    badge('ready for maintainer', readyMaint, 'blueviolet'),
+    badge('approved', approved, 'brightgreen'),
     badge(`stale >${STALE_DAYS}d`, stale, stale ? 'lightgrey' : 'green'),
-    badge('reviewed', `${doneCount}/${total}`, 'brightgreen'),
   ].join(' '));
   L.push('');
   L.push(`_Auto-updated every ~5 min from **${targetLabel}** open PRs. Last run: **${now}**._`);
@@ -321,23 +360,20 @@ function renderBody(prs, state, pools, now, targetLabel) {
   L.push('Anyone can edit — **no repo write access needed**. Add a **comment** with one or more commands; the bot applies it, then deletes your comment so this page stays fast:');
   L.push('');
   L.push('```');
-  L.push('/done 1234           mark PR #1234 reviewed');
-  L.push('/undone 1234         un-mark it');
-  L.push('/claim 1234          put your name on it');
-  L.push('/unclaim 1234        remove your name');
-  L.push('/priority 1234 P2    set priority (P1–P4)');
-  L.push('/note 1234 some text set a note (empty clears it)');
+  L.push('/priority 1234 P2      set priority (P1–P4)');
+  L.push('/note 1234 some text   set a note (empty clears it)');
+  L.push('/stage 1234 maintainer override stage: review | changes | maintainer | approved | auto');
+  L.push('/update                refresh the board from the latest PR data now');
   L.push('```');
   L.push('');
 
   // Column legend — always visible.
   L.push('## ℹ️ Legend');
   L.push('');
-  L.push('- **Via / How** — how a reviewer landed on the PR: 🤖 **auto** (picked by the auto-assign bot, read from its comment) · ✋ **manual** (requested by hand). The PR-level **Via** is `Auto`, `Manual`, or `Mixed`.');
-  L.push('- **Status** — that reviewer\'s latest review: ✅ approved · 🔴 changes requested · 💬 commented · ⏳ pending.');
+  L.push('- **Stage** — where the PR is in its lifecycle, computed automatically from reviews: 🆕 **ready to review** → 🔴 **changes requested** → 🧑‍⚖️ **ready for maintainer** (a first-pass reviewer approved) → ✅ **approved** (a maintainer approved). 📝 **draft**. A **✎** means someone set it by hand with `/stage`; **merged/closed PRs leave the board automatically**.');
+  L.push('- **How** — how a reviewer landed on the PR: 🤖 **auto** (picked by the auto-assign bot) · ✋ **manual** (requested by hand).');
   L.push('- **Checks** — CI + merge health: ✅ passing · ❌ failing · 🟡 running · ⚠️ merge conflict · — not reported yet.');
-  L.push('- **Claimed** — someone ran `/claim <#>` to signal "I\'m taking this", independent of the official review request.');
-  L.push('- **Reviewed** — ✅ a reviewer marked *their pass complete* via `/done <#>`. It does **not** mean merged or approved — it\'s a manual "I\'m finished looking" flag, so the PR drops out of their open count while it waits on others/the author. Merged or closed PRs leave the board automatically. AI reviewers (CodeRabbit, Greptile, …) are excluded from all counts.');
+  L.push('- Per-reviewer review state is shown as ✅ approved · 🔴 changes requested · 💬 commented · ⏳ pending. AI reviewers (CodeRabbit, Greptile, …) are excluded from all counts.');
   L.push('');
 
   // Your queue: expand your name to see your PRs, split by how you were added.
@@ -345,49 +381,53 @@ function renderBody(prs, state, pools, now, targetLabel) {
   // instead of jump links — expand right here.)
   L.push('## 🔎 Your queue');
   L.push('');
-  L.push('_Expand your name to see your PRs and how many are left. 🤖 = auto-assigned to you · ✋ = requested by hand. Clear them with `/done <#>` in a comment._');
+  L.push('_Expand your name to see your PRs. 🤖 = auto-assigned to you · ✋ = requested by hand. **Awaiting you** = not yet approved and no changes requested — the ones that still need your look._');
   L.push('');
   for (const login of reviewerOrder) {
     const items = reviewerPRs.get(login);
     if (!items || !items.length) continue;
     const auto = items.filter(it => it.e.via === 'auto');
     const manual = items.filter(it => it.e.via === 'manual');
-    const open = items.filter(it => !state.done[it.pr.number]).length;
+    const awaiting = items.filter(it => {
+      const sk = stageKey(it.pr, state);
+      return sk === 'review' || sk === 'maintainer';
+    }).length;
     const sortFn = (a, b) => bucket(priorityOf(state, a.pr.number)) - bucket(priorityOf(state, b.pr.number)) || a.pr.number - b.pr.number;
     auto.sort(sortFn); manual.sort(sortFn);
-    L.push(`<details><summary><b>@${login}</b> — ${open} open · 🤖 ${auto.length} auto · ✋ ${manual.length} manual</summary>`);
+    L.push(`<details><summary><b>@${login}</b> — ${awaiting} awaiting you · 🤖 ${auto.length} auto · ✋ ${manual.length} manual</summary>`);
     L.push('');
     L.push(`[🔗 Open my review requests on GitHub →](https://github.com/${targetLabel}/pulls?q=${encodeURIComponent(`is:open is:pr review-requested:${login}`)})`);
     L.push('');
-    L.push('| PR | Title | How | Priority | Status | Checks | Reviewed |');
-    L.push('|----|-------|:--:|:--------:|:------:|:------:|:--------:|');
+    L.push('| PR | Title | How | Priority | Stage | My review | Checks |');
+    L.push('|----|-------|:--:|:--------:|:------:|:--------:|:------:|');
     for (const { pr, e } of [...auto, ...manual]) {
       const p = priorityOf(state, pr.number);
-      L.push(`| ${prLink(pr)} | ${esc(pr.title)} | ${e.via === 'auto' ? '🤖' : '✋'} | ${p == null ? '—' : 'P' + p} | ${statusEmoji(e.status)} ${e.status} | ${ciCell(pr)} | ${state.done[pr.number] ? '✅' : '☐'} |`);
+      L.push(`| ${prLink(pr)} | ${esc(pr.title)} | ${e.via === 'auto' ? '🤖' : '✋'} | ${p == null ? '—' : 'P' + p} | ${stageCell(pr, state)} | ${statusEmoji(e.status)} ${e.status} | ${ciCell(pr)} |`);
     }
     L.push('');
     L.push('</details>');
   }
   L.push('');
 
-  // Priority-grouped tables (overall triage view).
+  // Priority-grouped tables (overall triage view) — each collapsible. P1 is
+  // open by default (blockers up front); the rest collapse to keep it short.
   const groups = [[1, 'P1 — launch blocker'], [2, 'P2'], [3, 'P3'], [4, 'P4 / unset']];
   for (const [g, title] of groups) {
     const rows = prs.filter(pr => bucket(priorityOf(state, pr.number)) === g)
       .sort((a, b) => a.number - b.number);
     if (!rows.length) continue;
-    L.push(`### ${title} · ${rows.length}`);
+    L.push(`<details${g === 1 ? ' open' : ''}><summary><b>${title}</b> · ${rows.length}</summary>`);
     L.push('');
-    L.push('| PR | Title | Checks | Author | Via | First-pass | Maintainer | Claimed | Reviewed | Notes |');
-    L.push('|----|-------|:------:|--------|:---:|-----------|-----------|---------|:--------:|-------|');
+    L.push('| PR | Title | Stage | Checks | Author | First-pass | Maintainer | Notes |');
+    L.push('|----|-------|:-----:|:------:|--------|-----------|-----------|-------|');
     for (const pr of rows) {
       const n = pr.number;
-      const claimed = (state.claims[n] || []).map(l => `@${l}`).join(' ') || '—';
-      const done = state.done[n] ? '✅' : '☐';
       const note = state.notes[n] ? esc(state.notes[n]) : '—';
-      const title2 = esc(pr.title) + (pr.isDraft ? ' _(draft)_' : '') + (pr.stale ? ` ⏳${pr.daysIdle}d` : '');
-      L.push(`| ${prLink(pr)} | ${title2} | ${ciCell(pr)} | @${pr.author} | ${pr.via} | ${reviewerCell(pr.firstPass)} | ${reviewerCell(pr.maintainers)} | ${claimed} | ${done} | ${note} |`);
+      const title2 = esc(pr.title) + (pr.stale ? ` ⏳${pr.daysIdle}d` : '');
+      L.push(`| ${prLink(pr)} | ${title2} | ${stageCell(pr, state)} | ${ciCell(pr)} | @${pr.author} | ${reviewerCell(pr.firstPass)} | ${reviewerCell(pr.maintainers)} | ${note} |`);
     }
+    L.push('');
+    L.push('</details>');
     L.push('');
   }
 
@@ -470,12 +510,12 @@ module.exports = async ({ github, context, core }) => {
       for (const cmd of cmds) applyCommand(state, cmd, now);
       if (await del(c.id)) processed++;
     } else if (looksLikeCommand(body)) {
-      // Tried to command but it didn't parse — most often a bare "/done" with
-      // no PR number. Nudge, then remove both the attempt and (later) the hint.
+      // Tried to command but it didn't parse — most often a missing PR number.
+      // Nudge, then remove both the attempt and (later) the hint.
       try {
         await github.rest.issues.createComment({ owner: hostOwner, repo: hostRepo, issue_number,
-          body: `${HINT_MARKER}\n@${author} commands need a PR number, e.g. \`/done 1234\`. `
-            + `Supported: \`/done\` \`/undone\` \`/claim\` \`/unclaim\` \`/priority <#> P1-P4\` \`/note <#> text\`. `
+          body: `${HINT_MARKER}\n@${author} most commands need a PR number, e.g. \`/priority 1234 P2\`. `
+            + `Supported: \`/priority <#> P1-P4\` · \`/note <#> text\` · \`/stage <#> review|changes|maintainer|approved|auto\` · \`/update\`. `
             + `(This hint auto-deletes on the next run.)` });
       } catch (e) { core.warning(`Could not post hint: ${e.message}`); }
       await del(c.id);
@@ -485,7 +525,7 @@ module.exports = async ({ github, context, core }) => {
 
   // Prune state for PRs no longer open (merged/closed drop off the board).
   const openNums = new Set(prs.map(p => p.number));
-  for (const key of ['done', 'notes', 'priority', 'claims']) {
+  for (const key of ['notes', 'priority', 'stage']) {
     for (const n of Object.keys(state[key])) {
       if (!openNums.has(Number(n))) delete state[key][n];
     }
@@ -504,5 +544,6 @@ module.exports = async ({ github, context, core }) => {
 
 // Exposed for offline testing.
 module.exports._internal = {
-  shape, loadState, parseCommands, looksLikeCommand, applyCommand, renderBody, SEED_PRIORITY,
+  shape, loadState, parseCommands, looksLikeCommand, applyCommand, renderBody,
+  autoStage, stageKey, stageCell, SEED_PRIORITY,
 };
