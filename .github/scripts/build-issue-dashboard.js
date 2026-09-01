@@ -431,8 +431,8 @@ function renderBody(prs, state, pools, now, targetLabel, opts = {}) {
   L.push('');
   L.push(`_Auto-updated every ~15 min from **${targetLabel}** open PRs. Last run: **${now}**._`);
   L.push('');
-  if (opts.dropLegend || opts.dropPriority || opts.leanQueue || opts.compact) {
-    L.push('_⚠️ Some sections are trimmed to keep this issue under GitHub’s 65,536-character limit — the per-person queue is preserved first._');
+  if (opts.dropPriority || opts.leanQueue || opts.compact) {
+    L.push('_⚠️ Some sections are trimmed to keep this issue under GitHub’s 65,536-character limit — the per-person queue and legend are preserved first._');
     L.push('');
   }
 
@@ -445,33 +445,6 @@ function renderBody(prs, state, pools, now, targetLabel, opts = {}) {
   L.push(`    "P4/none" : ${byPri[4] + byPri.none}`);
   L.push('```');
   L.push('');
-
-  // Release-scope issues with no open PR — the gap that's hard to see from the
-  // PR list alone (an issue in the release with nothing being merged toward it).
-  const relLabel = opts.releaseLabel;
-  if (relLabel) {
-    const relIssues = (opts.issues || []).slice()
-      .sort((a, b) => (Number(b.blocker) - Number(a.blocker)) || (b.daysIdle - a.daysIdle) || (a.number - b.number));
-    L.push(`<details open><summary><h2>🚩 <code>${relLabel}</code> issues with no open PR · ${relIssues.length}</h2></summary>`);
-    L.push('');
-    if (!relIssues.length) {
-      L.push(`_Every open \`${relLabel}\` issue has a PR in flight. 🎉_`);
-    } else {
-      L.push(`_${relIssues.length} open \`${relLabel}\` issue(s) have no PR that closes them (🔴 = release blocker) — nothing is being merged toward them yet._`);
-      L.push('');
-      L.push('| Issue | Title | Labels | Assignee | Idle |');
-      L.push('|-------|-------|--------|----------|:----:|');
-      for (const it of relIssues) {
-        const t = (it.blocker ? '🔴 ' : '') + esc(it.title);
-        const labels = it.labels.length ? it.labels.map(l => `\`${esc(l)}\``).join(' ') : '—';
-        const who = it.assignees.length ? it.assignees.map(mention).join(', ') : '—';
-        L.push(`| [#${it.number}](${it.url}) | ${t} | ${labels} | ${who} | ${it.daysIdle}d |`);
-      }
-    }
-    L.push('');
-    L.push('</details>');
-    L.push('');
-  }
 
   // How to edit (the whole point: no write access needed) — always visible.
   L.push('## ✍️ How to update this board');
@@ -504,8 +477,7 @@ function renderBody(prs, state, pools, now, targetLabel, opts = {}) {
   L.push('');
 
   // Column legend — one collapsible per column, each state on its own line so
-  // there's no run-on sentence to parse. Dropped first when trimming for size.
-  if (!opts.dropLegend) {
+  // there's no run-on sentence to parse. Always rendered.
   L.push('## ℹ️ Legend');
   L.push('');
   L.push('_Expand a column to see what each symbol means. AI reviewers (CodeRabbit, Greptile, …) are excluded from every count._');
@@ -554,7 +526,6 @@ function renderBody(prs, state, pools, now, targetLabel, opts = {}) {
     '— not reported yet.',
   ]);
   L.push('');
-  }
 
   // Your queue: expand your name to see your PRs, split by how you were added.
   // (In-issue heading anchors are unreliable, so this uses inline collapsibles
@@ -649,6 +620,34 @@ function renderBody(prs, state, pools, now, targetLabel, opts = {}) {
     L.push('<details><summary>🕓 <b>Recent activity</b></summary>');
     L.push('');
     for (const line of state.log) L.push(`- ${line}`);
+    L.push('');
+    L.push('</details>');
+    L.push('');
+  }
+
+  // Per-issue view: release-scope issues with no open PR — the gap that's hard
+  // to see from the PR list alone (a release issue nothing is being merged
+  // toward). Rendered last, after the per-person and per-PR views.
+  const relLabel = opts.releaseLabel;
+  if (relLabel) {
+    const relIssues = (opts.issues || []).slice()
+      .sort((a, b) => (Number(b.blocker) - Number(a.blocker)) || (b.daysIdle - a.daysIdle) || (a.number - b.number));
+    L.push(`<details open><summary><h2>🚩 <code>${relLabel}</code> issues with no open PR · ${relIssues.length}</h2></summary>`);
+    L.push('');
+    if (!relIssues.length) {
+      L.push(`_Every open \`${relLabel}\` issue has a PR in flight. 🎉_`);
+    } else {
+      L.push(`_${relIssues.length} open \`${relLabel}\` issue(s) have no PR that closes them (🔴 = release blocker) — nothing is being merged toward them yet._`);
+      L.push('');
+      L.push('| Issue | Title | Labels | Assignee | Idle |');
+      L.push('|-------|-------|--------|----------|:----:|');
+      for (const it of relIssues) {
+        const t = (it.blocker ? '🔴 ' : '') + esc(it.title);
+        const labels = it.labels.length ? it.labels.map(l => `\`${esc(l)}\``).join(' ') : '—';
+        const who = it.assignees.length ? it.assignees.map(mention).join(', ') : '—';
+        L.push(`| [#${it.number}](${it.url}) | ${t} | ${labels} | ${who} | ${it.daysIdle}d |`);
+      }
+    }
     L.push('');
     L.push('</details>');
     L.push('');
@@ -753,16 +752,16 @@ module.exports = async ({ github, context, core }) => {
   // still succeeds and never silently fails every run.
   const targetLabel = `${readOwner}/${readRepo}`;
   const renderOpts = { issues: noPrIssues, releaseLabel };
-  // Size tiers: the per-person queue is THE primary view, so it is the last
-  // thing sacrificed. Trim reference/secondary sections first, in order:
-  //   1. full → 2. drop Legend → 3. + drop per-PR tables →
-  //   4. + lean queue (awaiting rows only) → 5. drop queue (last resort).
+  // Size tiers (only ever needed when a repo has an unusually large number of
+  // open PRs). The per-person queue and the legend are always kept. Trim the
+  // per-PR tables first, then the queue as a last resort:
+  //   1. full → 2. drop per-PR tables →
+  //   3. + lean queue (awaiting rows only) → 4. drop queue (last resort).
   const tiers = [
     {},
-    { dropLegend: true },
-    { dropLegend: true, dropPriority: true },
-    { dropLegend: true, dropPriority: true, leanQueue: true },
-    { dropLegend: true, dropPriority: true, leanQueue: true, compact: true },
+    { dropPriority: true },
+    { dropPriority: true, leanQueue: true },
+    { dropPriority: true, leanQueue: true, compact: true },
   ];
   let body, tier = 0;
   for (; tier < tiers.length; tier++) {
