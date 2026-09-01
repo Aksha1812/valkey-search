@@ -187,6 +187,12 @@ function parseCommands(commentBody, author) {
   return out;
 }
 
+// True if a comment was *trying* to be a command, so we can nudge the author
+// when it fails to parse (e.g. bare "/done" with no PR number).
+const CMD_WORD_RE = /^\s*\/(done|undone|claim|unclaim|priority|note)\b/im;
+function looksLikeCommand(body) { return CMD_WORD_RE.test(String(body || '')); }
+const HINT_MARKER = '<!--HINT-->';
+
 function applyCommand(state, c, now) {
   const n = c.pr;
   let msg = null;
@@ -274,7 +280,7 @@ function renderBody(prs, state, pools, now, targetLabel) {
     badge('P3', byPri[3], 'yellow'),
     badge('needs first-pass', needsFP, needsFP ? 'critical' : 'green'),
     badge(`stale >${STALE_DAYS}d`, stale, stale ? 'lightgrey' : 'green'),
-    badge('done', `${doneCount}/${total}`, 'brightgreen'),
+    badge('reviewed', `${doneCount}/${total}`, 'brightgreen'),
   ].join(' '));
   L.push('');
   L.push(`_Auto-updated every ~5 min from **${targetLabel}** open PRs. Last run: **${now}**._`);
@@ -312,7 +318,7 @@ function renderBody(prs, state, pools, now, targetLabel) {
   L.push('- **Via / How** — how a reviewer landed on the PR: 🤖 **auto** (picked by the auto-assign bot, read from its comment) · ✋ **manual** (requested by hand). The PR-level **Via** is `Auto`, `Manual`, or `Mixed`.');
   L.push('- **Status** — that reviewer\'s latest review: ✅ approved · 🔴 changes requested · 💬 commented · ⏳ pending.');
   L.push('- **Claimed** — someone ran `/claim <#>` to signal "I\'m taking this", independent of the official review request.');
-  L.push('- **Done** — ✅ marked reviewed via `/done <#>`. AI reviewers (CodeRabbit, Greptile, …) are excluded from all counts.');
+  L.push('- **Reviewed** — ✅ a reviewer marked *their pass complete* via `/done <#>`. It does **not** mean merged or approved — it\'s a manual "I\'m finished looking" flag, so the PR drops out of their open count while it waits on others/the author. Merged or closed PRs leave the board automatically. AI reviewers (CodeRabbit, Greptile, …) are excluded from all counts.');
   L.push('</details>');
   L.push('');
 
@@ -333,8 +339,8 @@ function renderBody(prs, state, pools, now, targetLabel) {
     auto.sort(sortFn); manual.sort(sortFn);
     L.push(`<details><summary><b>@${login}</b> — ${open} open · 🤖 ${auto.length} auto · ✋ ${manual.length} manual</summary>`);
     L.push('');
-    L.push('| PR | Title | How | Priority | Status | Done |');
-    L.push('|----|-------|:--:|:--------:|:------:|:----:|');
+    L.push('| PR | Title | How | Priority | Status | Reviewed |');
+    L.push('|----|-------|:--:|:--------:|:------:|:--------:|');
     for (const { pr, e } of [...auto, ...manual]) {
       const p = priorityOf(state, pr.number);
       L.push(`| ${prLink(pr)} | ${esc(pr.title)} | ${e.via === 'auto' ? '🤖' : '✋'} | ${p == null ? '—' : 'P' + p} | ${statusEmoji(e.status)} ${e.status} | ${state.done[pr.number] ? '✅' : '☐'} |`);
@@ -352,8 +358,8 @@ function renderBody(prs, state, pools, now, targetLabel) {
     if (!rows.length) continue;
     L.push(`### ${title} · ${rows.length}`);
     L.push('');
-    L.push('| PR | Title | Author | Via | First-pass | Maintainer | Claimed | Done | Notes |');
-    L.push('|----|-------|--------|:---:|-----------|-----------|---------|:----:|-------|');
+    L.push('| PR | Title | Author | Via | First-pass | Maintainer | Claimed | Reviewed | Notes |');
+    L.push('|----|-------|--------|:---:|-----------|-----------|---------|:--------:|-------|');
     for (const pr of rows) {
       const n = pr.number;
       const claimed = (state.claims[n] || []).map(l => `@${l}`).join(' ') || '—';
@@ -421,21 +427,44 @@ module.exports = async ({ github, context, core }) => {
   // 3. Process command comments, then delete them.
   const comments = await github.paginate(github.rest.issues.listComments,
     { owner: hostOwner, repo: hostRepo, issue_number, per_page: 100 });
+  const del = async id => {
+    try { await github.rest.issues.deleteComment({ owner: hostOwner, repo: hostRepo, comment_id: id }); return true; }
+    catch (e) { core.warning(`Could not delete comment ${id}: ${e.message}`); return false; }
+  };
   let processed = 0;
   for (const c of comments) {
     const author = c.user && c.user.login;
-    if (author === 'github-actions[bot]') continue; // never touch our own log comments
-    const cmds = parseCommands(c.body, author);
-    if (!cmds.length) continue;
-    for (const cmd of cmds) applyCommand(state, cmd, now);
-    try {
-      await github.rest.issues.deleteComment({ owner: hostOwner, repo: hostRepo, comment_id: c.id });
-      processed++;
-    } catch (e) {
-      core.warning(`Could not delete comment ${c.id}: ${e.message}`);
+    const body = c.body || '';
+    // Clean up our own prior hint replies (transient nudges — never state).
+    if (isBot(author)) {
+      if (body.includes(HINT_MARKER)) await del(c.id);
+      continue; // never touch our own log comments
+    }
+    const cmds = parseCommands(body, author);
+    if (cmds.length) {
+      for (const cmd of cmds) applyCommand(state, cmd, now);
+      if (await del(c.id)) processed++;
+    } else if (looksLikeCommand(body)) {
+      // Tried to command but it didn't parse — most often a bare "/done" with
+      // no PR number. Nudge, then remove both the attempt and (later) the hint.
+      try {
+        await github.rest.issues.createComment({ owner: hostOwner, repo: hostRepo, issue_number,
+          body: `${HINT_MARKER}\n@${author} commands need a PR number, e.g. \`/done 1234\`. `
+            + `Supported: \`/done\` \`/undone\` \`/claim\` \`/unclaim\` \`/priority <#> P1-P4\` \`/note <#> text\`. `
+            + `(This hint auto-deletes on the next run.)` });
+      } catch (e) { core.warning(`Could not post hint: ${e.message}`); }
+      await del(c.id);
     }
   }
   if (processed) core.info(`Applied and cleared ${processed} command comment(s).`);
+
+  // Prune state for PRs no longer open (merged/closed drop off the board).
+  const openNums = new Set(prs.map(p => p.number));
+  for (const key of ['done', 'notes', 'priority', 'claims']) {
+    for (const n of Object.keys(state[key])) {
+      if (!openNums.has(Number(n))) delete state[key][n];
+    }
+  }
 
   // 4. Rewrite the issue body.
   const targetLabel = `${readOwner}/${readRepo}`;
@@ -450,5 +479,5 @@ module.exports = async ({ github, context, core }) => {
 
 // Exposed for offline testing.
 module.exports._internal = {
-  shape, loadState, parseCommands, applyCommand, renderBody, SEED_PRIORITY,
+  shape, loadState, parseCommands, looksLikeCommand, applyCommand, renderBody, SEED_PRIORITY,
 };
