@@ -53,11 +53,13 @@ async function gatherPRs(github, owner, repo) {
           pageInfo { hasNextPage endCursor }
           nodes {
             number title url isDraft createdAt updatedAt
+            mergeable
             author { login }
             labels(first:30) { nodes { name } }
             reviewRequests(first:30) { nodes { requestedReviewer { __typename ... on User { login } } } }
             reviews(first:100) { nodes { author { login } state submittedAt } }
             comments(first:100) { nodes { author { login } body } }
+            commits(last:1) { nodes { commit { statusCheckRollup { state } } } }
           }
         }
       }
@@ -143,11 +145,28 @@ function shape(node, firstPassPool, maintainerPool) {
 
   const daysIdle = Math.floor((Date.now() - new Date(node.updatedAt).getTime()) / 86400000);
 
+  const rollup = node.commits && node.commits.nodes && node.commits.nodes[0]
+    && node.commits.nodes[0].commit && node.commits.nodes[0].commit.statusCheckRollup;
+  const ci = rollup ? rollup.state : null;      // SUCCESS / FAILURE / ERROR / PENDING / EXPECTED / null
+  const mergeable = node.mergeable || 'UNKNOWN'; // MERGEABLE / CONFLICTING / UNKNOWN
+
   return {
     number: node.number, title: node.title, url: node.url, isDraft: node.isDraft,
     author, firstPass, maintainers, other, via,
     reviewerCount: universe.size, daysIdle, stale: daysIdle >= STALE_DAYS,
+    ci, mergeable,
   };
+}
+
+// Compact per-PR health: CI checks + merge conflicts. "—" when GitHub hasn't
+// reported yet (e.g. mergeable UNKNOWN right after a push).
+function ciCell(pr) {
+  const parts = [];
+  if (pr.ci === 'SUCCESS') parts.push('✅');
+  else if (pr.ci === 'FAILURE' || pr.ci === 'ERROR') parts.push('❌');
+  else if (pr.ci === 'PENDING' || pr.ci === 'EXPECTED') parts.push('🟡');
+  if (pr.mergeable === 'CONFLICTING') parts.push('⚠️');
+  return parts.join(' ') || '—';
 }
 
 // ── State: hidden JSON block in the issue body ───────────────────────────────
@@ -286,20 +305,20 @@ function renderBody(prs, state, pools, now, targetLabel) {
   L.push(`_Auto-updated every ~5 min from **${targetLabel}** open PRs. Last run: **${now}**._`);
   L.push('');
 
-  // Mermaid: PRs by priority.
+  // Mermaid: PRs by priority (compact labels).
   L.push('```mermaid');
-  L.push('pie showData title Open PRs by priority');
-  L.push(`    "P1 blocker" : ${byPri[1]}`);
+  L.push('pie showData title PRs by priority');
+  L.push(`    "P1" : ${byPri[1]}`);
   L.push(`    "P2" : ${byPri[2]}`);
   L.push(`    "P3" : ${byPri[3]}`);
-  L.push(`    "P4 / unset" : ${byPri[4] + byPri.none}`);
+  L.push(`    "P4/none" : ${byPri[4] + byPri.none}`);
   L.push('```');
   L.push('');
 
-  // How to edit (the whole point: no write access needed).
-  L.push('<details><summary>✍️ <b>How to update this board</b> (anyone — no write access needed)</summary>');
+  // How to edit (the whole point: no write access needed) — always visible.
+  L.push('## ✍️ How to update this board');
   L.push('');
-  L.push('Add a **comment** with one or more of these commands. The bot applies it, then deletes your comment so this page stays fast:');
+  L.push('Anyone can edit — **no repo write access needed**. Add a **comment** with one or more commands; the bot applies it, then deletes your comment so this page stays fast:');
   L.push('');
   L.push('```');
   L.push('/done 1234           mark PR #1234 reviewed');
@@ -309,17 +328,16 @@ function renderBody(prs, state, pools, now, targetLabel) {
   L.push('/priority 1234 P2    set priority (P1–P4)');
   L.push('/note 1234 some text set a note (empty clears it)');
   L.push('```');
-  L.push('</details>');
   L.push('');
 
-  // Column legend.
-  L.push('<details><summary>ℹ️ <b>Legend</b> — what the columns mean</summary>');
+  // Column legend — always visible.
+  L.push('## ℹ️ Legend');
   L.push('');
   L.push('- **Via / How** — how a reviewer landed on the PR: 🤖 **auto** (picked by the auto-assign bot, read from its comment) · ✋ **manual** (requested by hand). The PR-level **Via** is `Auto`, `Manual`, or `Mixed`.');
   L.push('- **Status** — that reviewer\'s latest review: ✅ approved · 🔴 changes requested · 💬 commented · ⏳ pending.');
+  L.push('- **Checks** — CI + merge health: ✅ passing · ❌ failing · 🟡 running · ⚠️ merge conflict · — not reported yet.');
   L.push('- **Claimed** — someone ran `/claim <#>` to signal "I\'m taking this", independent of the official review request.');
   L.push('- **Reviewed** — ✅ a reviewer marked *their pass complete* via `/done <#>`. It does **not** mean merged or approved — it\'s a manual "I\'m finished looking" flag, so the PR drops out of their open count while it waits on others/the author. Merged or closed PRs leave the board automatically. AI reviewers (CodeRabbit, Greptile, …) are excluded from all counts.');
-  L.push('</details>');
   L.push('');
 
   // Your queue: expand your name to see your PRs, split by how you were added.
@@ -339,11 +357,13 @@ function renderBody(prs, state, pools, now, targetLabel) {
     auto.sort(sortFn); manual.sort(sortFn);
     L.push(`<details><summary><b>@${login}</b> — ${open} open · 🤖 ${auto.length} auto · ✋ ${manual.length} manual</summary>`);
     L.push('');
-    L.push('| PR | Title | How | Priority | Status | Reviewed |');
-    L.push('|----|-------|:--:|:--------:|:------:|:--------:|');
+    L.push(`[🔗 Open my review requests on GitHub →](https://github.com/${targetLabel}/pulls?q=${encodeURIComponent(`is:open is:pr review-requested:${login}`)})`);
+    L.push('');
+    L.push('| PR | Title | How | Priority | Status | Checks | Reviewed |');
+    L.push('|----|-------|:--:|:--------:|:------:|:------:|:--------:|');
     for (const { pr, e } of [...auto, ...manual]) {
       const p = priorityOf(state, pr.number);
-      L.push(`| ${prLink(pr)} | ${esc(pr.title)} | ${e.via === 'auto' ? '🤖' : '✋'} | ${p == null ? '—' : 'P' + p} | ${statusEmoji(e.status)} ${e.status} | ${state.done[pr.number] ? '✅' : '☐'} |`);
+      L.push(`| ${prLink(pr)} | ${esc(pr.title)} | ${e.via === 'auto' ? '🤖' : '✋'} | ${p == null ? '—' : 'P' + p} | ${statusEmoji(e.status)} ${e.status} | ${ciCell(pr)} | ${state.done[pr.number] ? '✅' : '☐'} |`);
     }
     L.push('');
     L.push('</details>');
@@ -358,15 +378,15 @@ function renderBody(prs, state, pools, now, targetLabel) {
     if (!rows.length) continue;
     L.push(`### ${title} · ${rows.length}`);
     L.push('');
-    L.push('| PR | Title | Author | Via | First-pass | Maintainer | Claimed | Reviewed | Notes |');
-    L.push('|----|-------|--------|:---:|-----------|-----------|---------|:--------:|-------|');
+    L.push('| PR | Title | Checks | Author | Via | First-pass | Maintainer | Claimed | Reviewed | Notes |');
+    L.push('|----|-------|:------:|--------|:---:|-----------|-----------|---------|:--------:|-------|');
     for (const pr of rows) {
       const n = pr.number;
       const claimed = (state.claims[n] || []).map(l => `@${l}`).join(' ') || '—';
       const done = state.done[n] ? '✅' : '☐';
       const note = state.notes[n] ? esc(state.notes[n]) : '—';
       const title2 = esc(pr.title) + (pr.isDraft ? ' _(draft)_' : '') + (pr.stale ? ` ⏳${pr.daysIdle}d` : '');
-      L.push(`| ${prLink(pr)} | ${title2} | @${pr.author} | ${pr.via} | ${reviewerCell(pr.firstPass)} | ${reviewerCell(pr.maintainers)} | ${claimed} | ${done} | ${note} |`);
+      L.push(`| ${prLink(pr)} | ${title2} | ${ciCell(pr)} | @${pr.author} | ${pr.via} | ${reviewerCell(pr.firstPass)} | ${reviewerCell(pr.maintainers)} | ${claimed} | ${done} | ${note} |`);
     }
     L.push('');
   }
