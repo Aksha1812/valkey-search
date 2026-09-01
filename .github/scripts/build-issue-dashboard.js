@@ -361,17 +361,18 @@ function renderBody(prs, state, pools, now, targetLabel) {
   // and a personal 🙋 /claim collapse into a single row per PR. Claims come from
   // state, so they persist across every auto-regeneration.
   const prByNum = Object.fromEntries(prs.map(p => [p.number, p]));
-  const reviewerPRs = new Map(); // login -> Map(prNum -> {pr, auto, manual, claim})
+  const reviewerPRs = new Map(); // login -> Map(prNum -> {pr, auto, manual, claim, status})
   const touch = (login, pr) => {
     if (!reviewerPRs.has(login)) reviewerPRs.set(login, new Map());
     const m = reviewerPRs.get(login);
-    if (!m.has(pr.number)) m.set(pr.number, { pr, auto: false, manual: false, claim: false });
+    if (!m.has(pr.number)) m.set(pr.number, { pr, auto: false, manual: false, claim: false, status: 'Pending' });
     return m.get(pr.number);
   };
   for (const pr of prs) {
     for (const e of [...pr.firstPass, ...pr.maintainers, ...pr.other]) {
       const row = touch(e.login, pr);
       if (e.via === 'auto') row.auto = true; else row.manual = true;
+      row.status = e.status; // this person's latest GitHub review state on the PR
     }
   }
   for (const [n, logins] of Object.entries(state.claims || {})) {
@@ -433,13 +434,53 @@ function renderBody(prs, state, pools, now, targetLabel) {
   L.push('```');
   L.push('');
 
-  // Column legend — always visible.
+  // Column legend — one collapsible per column, each state on its own line so
+  // there's no run-on sentence to parse.
   L.push('## ℹ️ Legend');
   L.push('');
-  L.push('- **Stage** — where the PR is in its lifecycle, computed automatically from reviews: 🆕 **ready to review** → 🔴 **changes requested** → 🧑‍⚖️ **ready for maintainer** (a first-pass reviewer approved) → ✅ **approved** (a maintainer approved). 📝 **draft**. A **✎** means someone set it by hand with `/stage`; **merged/closed PRs leave the board automatically**.');
-  L.push('- **First-pass / Maintainer / Other** — the reviewers assigned to the PR, in each group; **Other** = anyone assigned who isn\'t in the first-pass or maintainer pools. 🤖 **auto** (auto-assign bot) · ✋ **manual** (requested by hand), then their review state: ✅ approved · 🔴 changes requested · 💬 commented · ⏳ pending.');
-  L.push('- **Checks** — CI + merge health: ✅ passing · ❌ failing · 🟡 running · ⚠️ merge conflict · — not reported yet.');
-  L.push('- **Reviewed** (Your queue) — ✅ you ran `/reviewed <#>` · ☐ not yet. `/needs-review <#>` resets this for the PR\'s **maintainers** only. 🙋 = a PR you `/claim`ed. AI reviewers (CodeRabbit, Greptile, …) are excluded from all counts.');
+  L.push('_Expand a column to see what each symbol means. AI reviewers (CodeRabbit, Greptile, …) are excluded from every count._');
+  L.push('');
+
+  const legend = (title, lines) => {
+    L.push(`<details><summary><b>${title}</b></summary>`);
+    L.push('');
+    for (const line of lines) L.push(`- ${line}`);
+    L.push('');
+    L.push('</details>');
+  };
+
+  legend('Stage <sub>(priority tables)</sub>', [
+    'Auto-computed from the PR\'s reviews; merged/closed PRs leave the board on their own.',
+    '📝 **Draft** — not ready for review yet.',
+    '🆕 **Ready to review** — open, no decisive review yet.',
+    '🔴 **Changes requested** — a reviewer asked for changes.',
+    '🧑‍⚖️ **Ready for maintainer** — a first-pass reviewer approved; needs a maintainer.',
+    '✅ **Approved** — a maintainer approved.',
+    '✎ — a human set the stage by hand with `/stage` (overrides the auto value).',
+  ]);
+  legend('First-pass / Maintainer / Other <sub>(priority tables)</sub>', [
+    'Who is assigned, split by pool. **Other** = anyone assigned who isn\'t in the first-pass or maintainer pool.',
+    'How they were added: 🤖 **auto** (auto-assign bot) · ✋ **manual** (requested by hand).',
+    'Their latest GitHub review state, shown after the how-symbol:',
+    '✅ approved · 🔴 changes requested · 💬 commented · ⏳ pending.',
+  ]);
+  legend('How <sub>(Your queue)</sub>', [
+    '🤖 auto-assigned to you.',
+    '✋ requested from you by hand.',
+    '🙋 you `/claim`ed it (persists across updates).',
+  ]);
+  legend('Reviewed <sub>(Your queue)</sub>', [
+    '✅ you approved the PR on GitHub **or** ran `/reviewed <#>` — either is enough.',
+    '☐ not yet — this is what counts toward **awaiting you**.',
+    '`/needs-review <#>` clears the manual `/reviewed` flag for the PR\'s maintainers (a standing GitHub approval still shows ✅ until it\'s dismissed).',
+  ]);
+  legend('Checks <sub>(CI + merge health)</sub>', [
+    '✅ passing.',
+    '❌ failing.',
+    '🟡 running.',
+    '⚠️ merge conflict.',
+    '— not reported yet.',
+  ]);
   L.push('');
 
   // Your queue: expand your name to see your PRs, split by how you were added.
@@ -447,13 +488,15 @@ function renderBody(prs, state, pools, now, targetLabel) {
   // instead of jump links — expand right here.)
   L.push('## 🔎 Your queue');
   L.push('');
-  L.push('_Expand your name to see your PRs. 🤖 = auto-assigned to you · ✋ = requested by hand · 🙋 = you `/claim`ed it. **Awaiting you** = you haven\'t marked it `/reviewed` yet._');
+  L.push('_Expand your name to see your PRs. 🤖 = auto-assigned to you · ✋ = requested by hand · 🙋 = you `/claim`ed it. **Reviewed** ✅ = you approved it on GitHub **or** ran `/reviewed`. **Awaiting you** = the rest._');
   L.push('');
   for (const login of reviewerOrder) {
     const m = reviewerPRs.get(login);
     if (!m || !m.size) continue;
     const items = [...m.values()];
-    const reviewedBy = it => !!(state.reviewed[it.pr.number] && state.reviewed[it.pr.number][login]);
+    // Reviewed if you approved on GitHub OR marked it by hand — approving in
+    // GitHub is enough, no separate /reviewed needed.
+    const reviewedBy = it => it.status === 'Approved' || !!(state.reviewed[it.pr.number] && state.reviewed[it.pr.number][login]);
     const awaiting = items.filter(it => !reviewedBy(it)).length;
     const autoN = items.filter(it => it.auto).length;
     const manualN = items.filter(it => it.manual).length;
