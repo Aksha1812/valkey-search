@@ -1,28 +1,30 @@
 # Living Triage Board (issue-based)
 #
-# Every ~5 minutes, regenerate the dashboard issue body from open PRs and apply
-# any command comments (/done, /note, /priority, /claim, …), deleting each
-# command comment after it's processed so the issue stays fast.
+# Regenerates the dashboard issue body from open PRs and applies command
+# comments (/done, /note, /priority, /claim, …), deleting each command comment
+# after it's processed so the issue stays fast.
+#
+# Runs on three triggers:
+#   * schedule (*/5)        — keep PR data fresh.
+#   * issue_comment created — apply a reviewer's command within seconds.
+#   * workflow_dispatch     — manual run, optional target_repo override.
 #
 # One-time setup:
-#   * Create the dashboard issue (any title/body) and note its number.
-#   * Set repo variable DASHBOARD_ISSUE to that number
-#     (gh variable set DASHBOARD_ISSUE --body <n> -R <owner>/<repo>),
-#     or hard-code it in the env below.
-#   * Uses the built-in GITHUB_TOKEN (needs issues: write, which is granted below).
-#
-# TARGET_REPO (workflow_dispatch input) lets a fork read a busier upstream repo's
-# PRs while owning its own local issue — handy for a demo.
+#   * Create the dashboard issue; set repo variable DASHBOARD_ISSUE to its number.
+#   * Optional: set repo variable TARGET_REPO (owner/name) to read a different
+#     repo's PRs (e.g. valkey-io/valkey-search for a fork demo).
 
 name: Reviewer Issue Dashboard
 
 on:
   schedule:
-    - cron: '*/5 * * * *'   # best-effort; GitHub may run this every 5–15 min
+    - cron: '*/5 * * * *'
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       target_repo:
-        description: 'Read PRs from this owner/name instead of this repo (demo).'
+        description: 'Read PRs from this owner/name instead of TARGET_REPO/this repo.'
         required: false
         default: ''
 
@@ -31,12 +33,14 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  issues: write         # update the issue body + delete command comments
+  issues: write
   pull-requests: read
   contents: read
 
 jobs:
   build:
+    # For comment events, only react to the dashboard issue itself.
+    if: ${{ github.event_name != 'issue_comment' || github.event.issue.number == fromJSON(vars.DASHBOARD_ISSUE) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +49,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           DASHBOARD_ISSUE: ${{ vars.DASHBOARD_ISSUE }}
-          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_REPO: ${{ inputs.target_repo || vars.TARGET_REPO }}
           POOLS_PATH: .github/reviewer-pools.json
         with:
           script: |
