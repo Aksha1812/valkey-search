@@ -1,0 +1,53 @@
+# Living Triage Board (issue-based)
+#
+# Every ~5 minutes, regenerate the dashboard issue body from open PRs and apply
+# any command comments (/done, /note, /priority, /claim, …), deleting each
+# command comment after it's processed so the issue stays fast.
+#
+# One-time setup:
+#   * Create the dashboard issue (any title/body) and note its number.
+#   * Set repo variable DASHBOARD_ISSUE to that number
+#     (gh variable set DASHBOARD_ISSUE --body <n> -R <owner>/<repo>),
+#     or hard-code it in the env below.
+#   * Uses the built-in GITHUB_TOKEN (needs issues: write, which is granted below).
+#
+# TARGET_REPO (workflow_dispatch input) lets a fork read a busier upstream repo's
+# PRs while owning its own local issue — handy for a demo.
+
+name: Reviewer Issue Dashboard
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # best-effort; GitHub may run this every 5–15 min
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Read PRs from this owner/name instead of this repo (demo).'
+        required: false
+        default: ''
+
+concurrency:
+  group: reviewer-issue-dashboard
+  cancel-in-progress: false
+
+permissions:
+  issues: write         # update the issue body + delete command comments
+  pull-requests: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dashboard
+        uses: actions/github-script@v7
+        env:
+          DASHBOARD_ISSUE: ${{ vars.DASHBOARD_ISSUE }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          POOLS_PATH: .github/reviewer-pools.json
+        with:
+          script: |
+            const build = require('./.github/scripts/build-issue-dashboard.js');
+            await build({ github, context, core });
