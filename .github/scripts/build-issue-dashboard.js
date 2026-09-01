@@ -88,11 +88,14 @@ const statusEmoji = s =>
   s === 'Approved' ? '✅' : s === 'Changes req.' ? '🔴' : s === 'Commented' ? '💬' : '⏳';
 
 // AI / automated reviewers to exclude — they aren't people who owe a review.
-// GitHub Apps post as "<name>[bot]"; also list bare logins seen in reviews.
-const BOT_LOGINS = new Set(['coderabbitai', 'coderabbitai[bot]', 'greptile',
-  'greptileai', 'greptile-apps[bot]', 'greptileai[bot]', 'github-actions[bot]',
-  'sonarcloud[bot]', 'codecov[bot]', 'dependabot[bot]']);
-const isBot = login => !login || /\[bot\]$/i.test(login) || BOT_LOGINS.has(String(login).toLowerCase());
+// GitHub Apps post as "<name>[bot]", but some (e.g. greptile-apps) show up as a
+// plain login, so also match known vendor stems as substrings.
+const BOT_STEMS = ['coderabbit', 'greptile', 'sonarcloud', 'codecov', 'dependabot', 'github-actions'];
+const isBot = login => {
+  if (!login) return true;
+  const l = String(login).toLowerCase();
+  return /\[bot\]$/.test(l) || BOT_STEMS.some(s => l.includes(s));
+};
 
 // Turn a raw GraphQL PR node into the shape the renderer consumes.
 function shape(node, firstPassPool, maintainerPool) {
