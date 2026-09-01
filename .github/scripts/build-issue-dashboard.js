@@ -174,7 +174,7 @@ const STATE_OPEN = '<!--BOARD_STATE';
 const STATE_CLOSE = 'BOARD_STATE-->';
 
 function loadState(body) {
-  const empty = { notes: {}, priority: {}, stage: {}, log: [] };
+  const empty = { notes: {}, priority: {}, stage: {}, reviewed: {}, claims: {}, log: [] };
   if (!body) return empty;
   const i = body.indexOf(STATE_OPEN);
   const j = body.indexOf(STATE_CLOSE);
@@ -182,8 +182,11 @@ function loadState(body) {
   try {
     const json = body.slice(i + STATE_OPEN.length, j).trim();
     const p = JSON.parse(json);
-    // Only carry forward the keys we still use — legacy done/claims are dropped.
-    return { notes: p.notes || {}, priority: p.priority || {}, stage: p.stage || {}, log: p.log || [] };
+    // reviewed: { prNum: { login: true } }   claims: { prNum: [login, …] }
+    return {
+      notes: p.notes || {}, priority: p.priority || {}, stage: p.stage || {},
+      reviewed: p.reviewed || {}, claims: p.claims || {}, log: p.log || [],
+    };
   } catch (e) {
     return empty;
   }
@@ -199,11 +202,10 @@ const STAGE_ALIAS = {
 
 // Parse one comment body for commands. Returns a list of {cmd, pr, arg, author}.
 // Supported (one per line):
-//   /priority 1234 P2        (or just a bare number)
-//   /note 1234 free text     (empty text clears the note)
-//   /stage 1234 maintainer   (review|changes|maintainer|approved|auto)
-//   /update                  (no #; just refresh the board from live PR data)
-const CMD_RE = /^\s*\/(priority|note|stage)\s+#?(\d+)\b\s*(.*)$/i;
+//   General (per-PR):   /priority 1234 P2 · /note 1234 text · /stage 1234 maintainer
+//                       /needs-review 1234 · /update
+//   Personal (per-you): /claim 1234 · /unclaim 1234 · /reviewed 1234 · /unreviewed 1234
+const CMD_RE = /^\s*\/(priority|note|stage|claim|unclaim|reviewed|unreviewed|needs-review)\s+#?(\d+)\b\s*(.*)$/i;
 const NOARG_RE = /^\s*\/(update|refresh)\b/i;
 
 function parseCommands(commentBody, author) {
@@ -218,33 +220,69 @@ function parseCommands(commentBody, author) {
 
 // True if a comment was *trying* to be a command, so we can nudge the author
 // when it fails to parse (e.g. "/priority" with no PR number).
-const CMD_WORD_RE = /^\s*\/(priority|note|stage|update|refresh)\b/im;
+const CMD_WORD_RE = /^\s*\/(priority|note|stage|claim|unclaim|reviewed|unreviewed|needs-review|update|refresh)\b/im;
 function looksLikeCommand(body) { return CMD_WORD_RE.test(String(body || '')); }
 const HINT_MARKER = '<!--HINT-->';
 
-function applyCommand(state, c, now) {
+// Render a person WITHOUT pinging them. A bare "@login" in the issue body (or a
+// hint comment) fires a GitHub notification every single run — spammy for a page
+// that rewrites itself every ~5 min. A profile link shows the same name, stays
+// clickable, and never notifies.
+const mention = login => `[${login}](https://github.com/${login})`;
+
+// ctx (optional) = { prByNum } — needed by /needs-review to find a PR's maintainers.
+function applyCommand(state, c, now, ctx) {
   const n = c.pr;
   let msg = null;
   switch (c.cmd) {
     case 'priority': {
       const p = (c.arg.match(/[1-4]/) || [])[0];
-      if (p) { state.priority[n] = Number(p); msg = `@${c.author} set #${n} → P${p}`; }
-      else { state.priority[n] = null; msg = `@${c.author} cleared priority on #${n}`; }
+      if (p) { state.priority[n] = Number(p); msg = `${mention(c.author)} set #${n} → P${p}`; }
+      else { state.priority[n] = null; msg = `${mention(c.author)} cleared priority on #${n}`; }
       break;
     }
     case 'note':
-      if (c.arg) { state.notes[n] = c.arg; msg = `@${c.author} noted #${n}: ${c.arg}`; }
-      else { delete state.notes[n]; msg = `@${c.author} cleared note on #${n}`; }
+      if (c.arg) { state.notes[n] = c.arg; msg = `${mention(c.author)} noted #${n}: ${c.arg}`; }
+      else { delete state.notes[n]; msg = `${mention(c.author)} cleared note on #${n}`; }
       break;
     case 'stage': {
       const a = c.arg.toLowerCase().trim();
-      if (!a || a === 'auto' || a === 'clear') { delete state.stage[n]; msg = `@${c.author} reset #${n} stage to auto`; }
-      else if (STAGE_ALIAS[a]) { state.stage[n] = STAGE_ALIAS[a]; msg = `@${c.author} set #${n} → ${STAGES[STAGE_ALIAS[a]].label}`; }
+      if (!a || a === 'auto' || a === 'clear') { delete state.stage[n]; msg = `${mention(c.author)} reset #${n} stage to auto`; }
+      else if (STAGE_ALIAS[a]) { state.stage[n] = STAGE_ALIAS[a]; msg = `${mention(c.author)} set #${n} → ${STAGES[STAGE_ALIAS[a]].label}`; }
       // unknown stage word → no change, no log (avoids noise).
       break;
     }
+    case 'claim': {
+      const arr = state.claims[n] || (state.claims[n] = []);
+      if (!arr.includes(c.author)) arr.push(c.author);
+      msg = `${mention(c.author)} claimed #${n} 🙋`; break;
+    }
+    case 'unclaim': {
+      state.claims[n] = (state.claims[n] || []).filter(l => l !== c.author);
+      if (!state.claims[n].length) delete state.claims[n];
+      msg = `${mention(c.author)} unclaimed #${n}`; break;
+    }
+    case 'reviewed': {
+      (state.reviewed[n] || (state.reviewed[n] = {}))[c.author] = true;
+      msg = `${mention(c.author)} marked #${n} reviewed ✅`; break;
+    }
+    case 'unreviewed': {
+      if (state.reviewed[n]) { delete state.reviewed[n][c.author]; if (!Object.keys(state.reviewed[n]).length) delete state.reviewed[n]; }
+      msg = `${mention(c.author)} un-marked their review of #${n}`; break;
+    }
+    case 'needs-review': {
+      // Author re-requests review: clear the Reviewed flag for the PR's
+      // maintainers only; first-pass / other reviewers are left as-is.
+      const pr = ctx && ctx.prByNum && ctx.prByNum[n];
+      const maints = pr ? pr.maintainers.map(e => e.login) : [];
+      if (state.reviewed[n]) {
+        for (const login of maints) delete state.reviewed[n][login];
+        if (!Object.keys(state.reviewed[n]).length) delete state.reviewed[n];
+      }
+      msg = `${mention(c.author)} requested re-review on #${n} — maintainer review reset 🔁`; break;
+    }
     case 'update':
-      msg = `@${c.author} refreshed the board 🔄`; break; // rebuild happens regardless
+      msg = `${mention(c.author)} refreshed the board 🔄`; break; // rebuild happens regardless
   }
   if (msg) {
     state.log.unshift(`\`${now}\` — ${msg}`);
@@ -263,7 +301,7 @@ const badge = (label, msg, color) => {
 
 function reviewerCell(list) {
   if (!list.length) return '—';
-  return list.map(r => `@${r.login} ${r.via === 'auto' ? '🤖' : '✋'} ${statusEmoji(r.status)}`).join('<br>');
+  return list.map(r => `${mention(r.login)} ${r.via === 'auto' ? '🤖' : '✋'} ${statusEmoji(r.status)}`).join('<br>');
 }
 
 function priorityOf(state, n) {
@@ -316,14 +354,27 @@ function renderBody(prs, state, pools, now, targetLabel) {
     else if (sk === 'maintainer') readyMaint++;
   }
 
-  // Build reviewer → their PRs once (used by both the index and the per-reviewer
-  // views). anchor() must match the GitHub heading slug: lowercased login.
-  const reviewerPRs = new Map();
+  // Build login → their PRs once, keyed by PR so assignment (🤖 auto / ✋ manual)
+  // and a personal 🙋 /claim collapse into a single row per PR. Claims come from
+  // state, so they persist across every auto-regeneration.
+  const prByNum = Object.fromEntries(prs.map(p => [p.number, p]));
+  const reviewerPRs = new Map(); // login -> Map(prNum -> {pr, auto, manual, claim})
+  const touch = (login, pr) => {
+    if (!reviewerPRs.has(login)) reviewerPRs.set(login, new Map());
+    const m = reviewerPRs.get(login);
+    if (!m.has(pr.number)) m.set(pr.number, { pr, auto: false, manual: false, claim: false });
+    return m.get(pr.number);
+  };
   for (const pr of prs) {
     for (const e of [...pr.firstPass, ...pr.maintainers, ...pr.other]) {
-      if (!reviewerPRs.has(e.login)) reviewerPRs.set(e.login, []);
-      reviewerPRs.get(e.login).push({ pr, e });
+      const row = touch(e.login, pr);
+      if (e.via === 'auto') row.auto = true; else row.manual = true;
     }
+  }
+  for (const [n, logins] of Object.entries(state.claims || {})) {
+    const pr = prByNum[n];
+    if (!pr) continue;
+    for (const login of logins) touch(login, pr).claim = true;
   }
   const reviewerOrder = [...pools.firstPass, ...pools.maintainers,
     ...[...reviewerPRs.keys()].filter(l => !pools.firstPass.includes(l) && !pools.maintainers.includes(l)).sort()];
@@ -357,13 +408,25 @@ function renderBody(prs, state, pools, now, targetLabel) {
   // How to edit (the whole point: no write access needed) — always visible.
   L.push('## ✍️ How to update this board');
   L.push('');
-  L.push('Anyone can edit — **no repo write access needed**. Add a **comment** with one or more commands; the bot applies it, then deletes your comment so this page stays fast:');
+  L.push('Anyone can edit — **no repo write access needed**. Add a **comment** with one or more commands; the bot applies it, then deletes your comment so this page stays fast.');
+  L.push('');
+  L.push('**General commands** — act on a PR (the priority tables below):');
   L.push('');
   L.push('```');
   L.push('/priority 1234 P2      set priority (P1–P4)');
   L.push('/note 1234 some text   set a note (empty clears it)');
   L.push('/stage 1234 maintainer override stage: review | changes | maintainer | approved | auto');
+  L.push('/needs-review 1234     re-request maintainer review (clears maintainers’ Reviewed)');
   L.push('/update                refresh the board from the latest PR data now');
+  L.push('```');
+  L.push('');
+  L.push('**Personal commands** — act on you (your row in *Your queue*):');
+  L.push('');
+  L.push('```');
+  L.push('/claim 1234        add the PR to your queue / put your name on it');
+  L.push('/unclaim 1234      remove your claim');
+  L.push('/reviewed 1234     mark that you have reviewed it');
+  L.push('/unreviewed 1234   un-mark it');
   L.push('```');
   L.push('');
 
@@ -371,9 +434,9 @@ function renderBody(prs, state, pools, now, targetLabel) {
   L.push('## ℹ️ Legend');
   L.push('');
   L.push('- **Stage** — where the PR is in its lifecycle, computed automatically from reviews: 🆕 **ready to review** → 🔴 **changes requested** → 🧑‍⚖️ **ready for maintainer** (a first-pass reviewer approved) → ✅ **approved** (a maintainer approved). 📝 **draft**. A **✎** means someone set it by hand with `/stage`; **merged/closed PRs leave the board automatically**.');
-  L.push('- **How** — how a reviewer landed on the PR: 🤖 **auto** (picked by the auto-assign bot) · ✋ **manual** (requested by hand).');
+  L.push('- **First-pass / Maintainer / Other** — the reviewers assigned to the PR, in each group; **Other** = anyone assigned who isn\'t in the first-pass or maintainer pools. 🤖 **auto** (auto-assign bot) · ✋ **manual** (requested by hand), then their review state: ✅ approved · 🔴 changes requested · 💬 commented · ⏳ pending.');
   L.push('- **Checks** — CI + merge health: ✅ passing · ❌ failing · 🟡 running · ⚠️ merge conflict · — not reported yet.');
-  L.push('- Per-reviewer review state is shown as ✅ approved · 🔴 changes requested · 💬 commented · ⏳ pending. AI reviewers (CodeRabbit, Greptile, …) are excluded from all counts.');
+  L.push('- **Reviewed** (Your queue) — ✅ you ran `/reviewed <#>` · ☐ not yet. `/needs-review <#>` resets this for the PR\'s **maintainers** only. 🙋 = a PR you `/claim`ed. AI reviewers (CodeRabbit, Greptile, …) are excluded from all counts.');
   L.push('');
 
   // Your queue: expand your name to see your PRs, split by how you were added.
@@ -381,28 +444,30 @@ function renderBody(prs, state, pools, now, targetLabel) {
   // instead of jump links — expand right here.)
   L.push('## 🔎 Your queue');
   L.push('');
-  L.push('_Expand your name to see your PRs. 🤖 = auto-assigned to you · ✋ = requested by hand. **Awaiting you** = not yet approved and no changes requested — the ones that still need your look._');
+  L.push('_Expand your name to see your PRs. 🤖 = auto-assigned to you · ✋ = requested by hand · 🙋 = you `/claim`ed it. **Awaiting you** = you haven\'t marked it `/reviewed` yet._');
   L.push('');
   for (const login of reviewerOrder) {
-    const items = reviewerPRs.get(login);
-    if (!items || !items.length) continue;
-    const auto = items.filter(it => it.e.via === 'auto');
-    const manual = items.filter(it => it.e.via === 'manual');
-    const awaiting = items.filter(it => {
-      const sk = stageKey(it.pr, state);
-      return sk === 'review' || sk === 'maintainer';
-    }).length;
-    const sortFn = (a, b) => bucket(priorityOf(state, a.pr.number)) - bucket(priorityOf(state, b.pr.number)) || a.pr.number - b.pr.number;
-    auto.sort(sortFn); manual.sort(sortFn);
-    L.push(`<details><summary><b>@${login}</b> — ${awaiting} awaiting you · 🤖 ${auto.length} auto · ✋ ${manual.length} manual</summary>`);
+    const m = reviewerPRs.get(login);
+    if (!m || !m.size) continue;
+    const items = [...m.values()];
+    const reviewedBy = it => !!(state.reviewed[it.pr.number] && state.reviewed[it.pr.number][login]);
+    const awaiting = items.filter(it => !reviewedBy(it)).length;
+    const autoN = items.filter(it => it.auto).length;
+    const manualN = items.filter(it => it.manual).length;
+    const claimN = items.filter(it => it.claim).length;
+    items.sort((a, b) => bucket(priorityOf(state, a.pr.number)) - bucket(priorityOf(state, b.pr.number)) || a.pr.number - b.pr.number);
+    const bits = [`${awaiting} awaiting you`, `🤖 ${autoN} auto`, `✋ ${manualN} manual`];
+    if (claimN) bits.push(`🙋 ${claimN} claimed`);
+    L.push(`<details><summary><b>${mention(login)}</b> — ${bits.join(' · ')}</summary>`);
     L.push('');
     L.push(`[🔗 Open my review requests on GitHub →](https://github.com/${targetLabel}/pulls?q=${encodeURIComponent(`is:open is:pr review-requested:${login}`)})`);
     L.push('');
-    L.push('| PR | Title | How | Priority | Stage | My review | Checks |');
-    L.push('|----|-------|:--:|:--------:|:------:|:--------:|:------:|');
-    for (const { pr, e } of [...auto, ...manual]) {
-      const p = priorityOf(state, pr.number);
-      L.push(`| ${prLink(pr)} | ${esc(pr.title)} | ${e.via === 'auto' ? '🤖' : '✋'} | ${p == null ? '—' : 'P' + p} | ${stageCell(pr, state)} | ${statusEmoji(e.status)} ${e.status} | ${ciCell(pr)} |`);
+    L.push('| PR | Title | How | Priority | Checks | Reviewed |');
+    L.push('|----|-------|:--:|:--------:|:------:|:--------:|');
+    for (const it of items) {
+      const p = priorityOf(state, it.pr.number);
+      const how = [it.auto ? '🤖' : '', it.manual ? '✋' : '', it.claim ? '🙋' : ''].filter(Boolean).join('') || '—';
+      L.push(`| ${prLink(it.pr)} | ${esc(it.pr.title)} | ${how} | ${p == null ? '—' : 'P' + p} | ${ciCell(it.pr)} | ${reviewedBy(it) ? '✅' : '☐'} |`);
     }
     L.push('');
     L.push('</details>');
@@ -418,13 +483,13 @@ function renderBody(prs, state, pools, now, targetLabel) {
     if (!rows.length) continue;
     L.push(`<details${g === 1 ? ' open' : ''}><summary><b>${title}</b> · ${rows.length}</summary>`);
     L.push('');
-    L.push('| PR | Title | Stage | Checks | Author | First-pass | Maintainer | Notes |');
-    L.push('|----|-------|:-----:|:------:|--------|-----------|-----------|-------|');
+    L.push('| PR | Title | Stage | Checks | Author | First-pass | Maintainer | Other | Notes |');
+    L.push('|----|-------|:-----:|:------:|--------|-----------|-----------|-------|-------|');
     for (const pr of rows) {
       const n = pr.number;
       const note = state.notes[n] ? esc(state.notes[n]) : '—';
       const title2 = esc(pr.title) + (pr.stale ? ` ⏳${pr.daysIdle}d` : '');
-      L.push(`| ${prLink(pr)} | ${title2} | ${stageCell(pr, state)} | ${ciCell(pr)} | @${pr.author} | ${reviewerCell(pr.firstPass)} | ${reviewerCell(pr.maintainers)} | ${note} |`);
+      L.push(`| ${prLink(pr)} | ${title2} | ${stageCell(pr, state)} | ${ciCell(pr)} | ${mention(pr.author)} | ${reviewerCell(pr.firstPass)} | ${reviewerCell(pr.maintainers)} | ${reviewerCell(pr.other)} | ${note} |`);
     }
     L.push('');
     L.push('</details>');
@@ -490,6 +555,7 @@ module.exports = async ({ github, context, core }) => {
   // folds runs of those into "N hidden items", so the comment list itself
   // stays truly empty. We skip our own log comments and only clean up our own
   // transient hint replies.
+  const ctx = { prByNum: Object.fromEntries(prs.map(p => [p.number, p])) };
   const comments = await github.paginate(github.rest.issues.listComments,
     { owner: hostOwner, repo: hostRepo, issue_number, per_page: 100 });
   const del = async id => {
@@ -507,15 +573,16 @@ module.exports = async ({ github, context, core }) => {
     }
     const cmds = parseCommands(body, author);
     if (cmds.length) {
-      for (const cmd of cmds) applyCommand(state, cmd, now);
+      for (const cmd of cmds) applyCommand(state, cmd, now, ctx);
       if (await del(c.id)) processed++;
     } else if (looksLikeCommand(body)) {
       // Tried to command but it didn't parse — most often a missing PR number.
       // Nudge, then remove both the attempt and (later) the hint.
       try {
         await github.rest.issues.createComment({ owner: hostOwner, repo: hostRepo, issue_number,
-          body: `${HINT_MARKER}\n@${author} most commands need a PR number, e.g. \`/priority 1234 P2\`. `
-            + `Supported: \`/priority <#> P1-P4\` · \`/note <#> text\` · \`/stage <#> review|changes|maintainer|approved|auto\` · \`/update\`. `
+          body: `${HINT_MARKER}\n${mention(author)} most commands need a PR number, e.g. \`/priority 1234 P2\`. `
+            + `General: \`/priority <#> P1-P4\` · \`/note <#> text\` · \`/stage <#> …\` · \`/needs-review <#>\` · \`/update\`. `
+            + `Personal: \`/claim <#>\` · \`/unclaim <#>\` · \`/reviewed <#>\` · \`/unreviewed <#>\`. `
             + `(This hint auto-deletes on the next run.)` });
       } catch (e) { core.warning(`Could not post hint: ${e.message}`); }
       await del(c.id);
@@ -525,7 +592,7 @@ module.exports = async ({ github, context, core }) => {
 
   // Prune state for PRs no longer open (merged/closed drop off the board).
   const openNums = new Set(prs.map(p => p.number));
-  for (const key of ['notes', 'priority', 'stage']) {
+  for (const key of ['notes', 'priority', 'stage', 'reviewed', 'claims']) {
     for (const n of Object.keys(state[key])) {
       if (!openNums.has(Number(n))) delete state[key][n];
     }
