@@ -770,6 +770,7 @@ module.exports = async ({ github, context, core }) => {
   let body, tier = 0;
   for (; tier < tiers.length; tier++) {
     body = renderBody(prs, state, pools, now, targetLabel, { ...renderOpts, ...tiers[tier] });
+    core.info(`DEBUG tier ${tier} code points: ${bodyLen(body)}`);
     if (bodyLen(body) <= GH_BODY_MAX) break;
   }
   if (tier > 0) {
