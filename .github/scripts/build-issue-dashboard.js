@@ -299,7 +299,7 @@ function renderBody(prs, state, pools, now, targetLabel) {
   // How to edit (the whole point: no write access needed).
   L.push('<details><summary>✍️ <b>How to update this board</b> (anyone — no write access needed)</summary>');
   L.push('');
-  L.push('Add a **comment** with one or more of these commands. The bot applies it, then collapses your comment so this page stays fast:');
+  L.push('Add a **comment** with one or more of these commands. The bot applies it, then deletes your comment so this page stays fast:');
   L.push('');
   L.push('```');
   L.push('/done 1234           mark PR #1234 reviewed');
@@ -424,69 +424,44 @@ module.exports = async ({ github, context, core }) => {
     }
   }
 
-  // 3. Process command comments, then HIDE them (minimize as OUTDATED).
+  // 3. Process command comments, then delete them so the issue stays fast.
   //
-  // We minimize rather than delete on purpose: deleting a comment leaves a
-  // permanent "X deleted a comment" timeline event that can't be removed and
-  // spams the issue. Minimizing collapses the comment out of view (body not
-  // rendered, page stays fast) with no timeline noise. We fetch via GraphQL so
-  // we can see `isMinimized` and skip anything already hidden — that stops us
-  // re-processing (and re-minimizing) the same comment on every run.
-  const comments = [];
-  let cursor = null;
-  do {
-    const page = await github.graphql(`
-      query($owner:String!,$repo:String!,$num:Int!,$cursor:String){
-        repository(owner:$owner,name:$repo){
-          issue(number:$num){
-            comments(first:100, after:$cursor){
-              nodes { id databaseId isMinimized body author{login} }
-              pageInfo { hasNextPage endCursor }
-            }
-          }
-        }
-      }`, { owner: hostOwner, repo: hostRepo, num: issue_number, cursor });
-    const conn = page.repository.issue.comments;
-    comments.push(...conn.nodes);
-    cursor = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
-  } while (cursor);
-
-  const hide = async nodeId => {
-    try {
-      await github.graphql(`
-        mutation($id:ID!){ minimizeComment(input:{subjectId:$id, classifier:OUTDATED}){ clientMutationId } }`,
-        { id: nodeId });
-      return true;
-    } catch (e) { core.warning(`Could not hide comment ${nodeId}: ${e.message}`); return false; }
+  // Deleting leaves a "X deleted a comment" timeline event, but GitHub auto-
+  // folds runs of those into "N hidden items", so the comment list itself
+  // stays truly empty. We skip our own log comments and only clean up our own
+  // transient hint replies.
+  const comments = await github.paginate(github.rest.issues.listComments,
+    { owner: hostOwner, repo: hostRepo, issue_number, per_page: 100 });
+  const del = async id => {
+    try { await github.rest.issues.deleteComment({ owner: hostOwner, repo: hostRepo, comment_id: id }); return true; }
+    catch (e) { core.warning(`Could not delete comment ${id}: ${e.message}`); return false; }
   };
-
   let processed = 0;
   for (const c of comments) {
-    if (c.isMinimized) continue;           // already collapsed — leave it alone
-    const author = c.author && c.author.login;
+    const author = c.user && c.user.login;
     const body = c.body || '';
-    // Collapse our own prior hint replies (transient nudges — never state).
+    // Clean up our own prior hint replies (transient nudges — never state).
     if (isBot(author)) {
-      if (body.includes(HINT_MARKER)) await hide(c.id);
+      if (body.includes(HINT_MARKER)) await del(c.id);
       continue; // never touch our own log comments
     }
     const cmds = parseCommands(body, author);
     if (cmds.length) {
       for (const cmd of cmds) applyCommand(state, cmd, now);
-      if (await hide(c.id)) processed++;
+      if (await del(c.id)) processed++;
     } else if (looksLikeCommand(body)) {
       // Tried to command but it didn't parse — most often a bare "/done" with
-      // no PR number. Nudge, then collapse both the attempt and (later) the hint.
+      // no PR number. Nudge, then remove both the attempt and (later) the hint.
       try {
         await github.rest.issues.createComment({ owner: hostOwner, repo: hostRepo, issue_number,
           body: `${HINT_MARKER}\n@${author} commands need a PR number, e.g. \`/done 1234\`. `
             + `Supported: \`/done\` \`/undone\` \`/claim\` \`/unclaim\` \`/priority <#> P1-P4\` \`/note <#> text\`. `
-            + `(This hint auto-collapses on the next run.)` });
+            + `(This hint auto-deletes on the next run.)` });
       } catch (e) { core.warning(`Could not post hint: ${e.message}`); }
-      await hide(c.id);
+      await del(c.id);
     }
   }
-  if (processed) core.info(`Applied and collapsed ${processed} command comment(s).`);
+  if (processed) core.info(`Applied and cleared ${processed} command comment(s).`);
 
   // Prune state for PRs no longer open (merged/closed drop off the board).
   const openNums = new Set(prs.map(p => p.number));
