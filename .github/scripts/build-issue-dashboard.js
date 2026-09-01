@@ -763,13 +763,17 @@ module.exports = async ({ github, context, core }) => {
     { dropPriority: true, leanQueue: true },
     { dropPriority: true, leanQueue: true, compact: true },
   ];
+  // GitHub enforces the 65,536 limit by Unicode code point, not UTF-16 code
+  // unit, so measure code points — otherwise the board's emoji (each an astral
+  // pair) inflate the count and trigger trimming well before the real limit.
+  const bodyLen = s => [...s].length;
   let body, tier = 0;
   for (; tier < tiers.length; tier++) {
     body = renderBody(prs, state, pools, now, targetLabel, { ...renderOpts, ...tiers[tier] });
-    if (body.length <= GH_BODY_MAX) break;
+    if (bodyLen(body) <= GH_BODY_MAX) break;
   }
   if (tier > 0) {
-    core.warning(`Body over ${GH_BODY_MAX} chars — applied trim tier ${tier} (${JSON.stringify(tiers[Math.min(tier, tiers.length - 1)])}); final ${body.length} chars.`);
+    core.warning(`Body over ${GH_BODY_MAX} chars — applied trim tier ${tier} (${JSON.stringify(tiers[Math.min(tier, tiers.length - 1)])}); final ${bodyLen(body)} chars.`);
   }
   // Persist BEFORE deleting/posting comments. If this throws, we abort here and
   // no command comment is lost — the next scheduled run reprocesses it.
