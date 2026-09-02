@@ -40,7 +40,14 @@ permissions:
 jobs:
   build:
     # For comment events, only react to the dashboard issue itself.
-    if: ${{ github.event_name != 'issue_comment' || github.event.issue.number == fromJSON(vars.DASHBOARD_ISSUE) }}
+    # For comment events, only react to the board issue itself, and only to
+    # comments from repository collaborators/maintainers — a non-collaborator's
+    # command shouldn't spin up a run. The in-script gate still rejects and
+    # cleans up any such comment on the next scheduled sweep.
+    if: >-
+      ${{ github.event_name != 'issue_comment' ||
+          (github.event.issue.number == fromJSON(vars.DASHBOARD_ISSUE) &&
+           contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
