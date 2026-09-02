@@ -39,7 +39,6 @@ permissions:
 
 jobs:
   build:
-    # For comment events, only react to the dashboard issue itself.
     # For comment events, only react to the board issue itself, and only to
     # comments from repository collaborators/maintainers — a non-collaborator's
     # command shouldn't spin up a run. The in-script gate still rejects and
@@ -58,7 +57,6 @@ jobs:
           DASHBOARD_ISSUE: ${{ vars.DASHBOARD_ISSUE }}
           TARGET_REPO: ${{ inputs.target_repo || vars.TARGET_REPO }}
           POOLS_PATH: .github/reviewer-pools.json
-          RELEASE_LABEL: ''
         with:
           script: |
             const build = require('./.github/scripts/build-issue-dashboard.js');
