@@ -66,12 +66,13 @@ bool ShouldStopAdapter(void *arg) {
 
 void SetWorkFn(WorkFn fn) { work_fn = fn; }
 
-int OnGlobalDefragCallback(ValkeyModuleDefragCtx *ctx) {
+void OnGlobalDefragCallback(ValkeyModuleDefragCtx *ctx) {
   callback_invocations.fetch_add(1, std::memory_order_relaxed);
 
   // Step 1: recover where the previous invocation stopped. On the first call of
-  // a pass the stored cursor is 0, meaning "start a new pass". DefragCursorGet
-  // fails only if core gave us no cursor at all; treat that as "start over".
+  // a pass the stored cursor is 0, meaning "start a new pass". A global callback
+  // is always given a cursor, so DefragCursorGet only fails on an older core;
+  // treat that as "start over".
   unsigned long resume_from = 0;  // NOLINT(runtime/int) - core API type
   if (ValkeyModule_DefragCursorGet(ctx, &resume_from) == VALKEYMODULE_OK) {
     cursor_reads.fetch_add(1, std::memory_order_relaxed);
@@ -98,7 +99,6 @@ int OnGlobalDefragCallback(ValkeyModuleDefragCtx *ctx) {
   } else {
     incomplete_returns.fetch_add(1, std::memory_order_relaxed);
   }
-  return 0;
 }
 
 bool RegisterGlobalDefragCallback(ValkeyModuleCtx *ctx) {

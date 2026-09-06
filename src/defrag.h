@@ -76,9 +76,9 @@ void ResetStats();
 // The global defrag callback core invokes. Exposed (rather than kept static) so
 // it can be unit tested directly without standing up a full module load.
 //
-// Returns 0; the "more work" signal for global callbacks travels through the
-// cursor, not the return value (see the contract above).
-int OnGlobalDefragCallback(ValkeyModuleDefragCtx *ctx);
+// Core types the global callback as returning void: the "more work" signal
+// travels through the cursor, not a return value (see the contract above).
+void OnGlobalDefragCallback(ValkeyModuleDefragCtx *ctx);
 
 // The work layer behind the callback.
 //
