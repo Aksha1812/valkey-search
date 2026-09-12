@@ -44,6 +44,8 @@ constexpr absl::string_view kSlopParam{"SLOP"};
 constexpr absl::string_view kInorder{"INORDER"};
 constexpr absl::string_view kVerbatim{"VERBATIM"};
 constexpr absl::string_view kScorerParam{"SCORER"};
+constexpr absl::string_view kWithCursorParam{"WITHCURSOR"};
+constexpr absl::string_view kMaxIdleParam{"MAXIDLE"};
 
 std::string OutputNameFor(absl::string_view written_name,
                           absl::string_view schema_identifier) {
@@ -357,6 +359,29 @@ ConstructGroupByParser() {
       });
 }
 
+std::unique_ptr<vmsdk::ParamParser<AggregateParameters>>
+ConstructWithCursorParser() {
+  return std::make_unique<vmsdk::ParamParser<AggregateParameters>>(
+      [](AggregateParameters &parameters,
+         vmsdk::ArgsIterator &itr) -> absl::Status {
+        parameters.withcursor_ = true;
+        if (itr.PopIfNextIgnoreCase(kMaxParam)) {
+          size_t count{0};
+          VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, count));
+          if (count == 0) {
+            return absl::InvalidArgumentError("WITHCURSOR COUNT must be > 0");
+          }
+          parameters.cursor_count_ = count;
+        }
+        if (itr.PopIfNextIgnoreCase(kMaxIdleParam)) {
+          uint64_t idle_ms{0};
+          VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, idle_ms));
+          parameters.cursor_max_idle_ = absl::Milliseconds(idle_ms);
+        }
+        return absl::OkStatus();
+      });
+}
+
 vmsdk::KeyValueParser<AggregateParameters> CreateAggregateParser() {
   vmsdk::KeyValueParser<AggregateParameters> parser;
   parser.AddParamParser(kDialectParam,
@@ -381,6 +406,7 @@ vmsdk::KeyValueParser<AggregateParameters> CreateAggregateParser() {
   parser.AddParamParser(kLimitParam, ConstructLimitParser());
   parser.AddParamParser(kParamsParam, ConstructParamsParser());
   parser.AddParamParser(kSortByParam, ConstructSortByParser());
+  parser.AddParamParser(kWithCursorParam, ConstructWithCursorParser());
   return parser;
 }
 

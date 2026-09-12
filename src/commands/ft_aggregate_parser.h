@@ -11,6 +11,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/time/time.h"
 #include "src/commands/commands.h"
 #include "src/expr/expr.h"
 #include "src/expr/value.h"
@@ -74,7 +75,7 @@ struct IndexInterface {
 struct AggregateParameters : public expr::Expression::CompileContext,
                              public QueryCommand {
   ~AggregateParameters() override = default;
-  AggregateParameters(int db_num) : QueryCommand(db_num){};
+  AggregateParameters(int db_num) : QueryCommand(db_num) {};
   absl::Status ParseCommand(vmsdk::ArgsIterator& itr) override;
   void SendReply(ValkeyModuleCtx* ctx, query::SearchResult& result) override;
   bool loadall_{false};
@@ -82,6 +83,11 @@ struct AggregateParameters : public expr::Expression::CompileContext,
   bool load_key{false};
   bool addscores_{false};
   std::vector<std::unique_ptr<Stage>> stages_;
+
+  // WITHCURSOR options (set by parser; checked in SendReply).
+  bool withcursor_{false};
+  size_t cursor_count_{100};
+  absl::Duration cursor_max_idle_{absl::Milliseconds(300000)};
 
   absl::StatusOr<std::unique_ptr<expr::Expression::AttributeReference>>
   MakeReference(const absl::string_view s, bool create) override;

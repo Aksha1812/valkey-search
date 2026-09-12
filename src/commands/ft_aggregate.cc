@@ -15,6 +15,7 @@
 #include "debug.h"
 #include "ft_search_parser.h"
 #include "src/commands/commands.h"
+#include "src/commands/cursor_manager.h"
 #include "src/commands/ft_aggregate_exec.h"
 #include "src/index_schema.h"
 #include "src/indexes/index_base.h"
@@ -432,42 +433,86 @@ absl::Status ExecuteAggregationStages(AggregateParameters &parameters,
   return absl::OkStatus();
 }
 
-// Generate the final response from processed records
+static void ReplyOneRecord(ValkeyModuleCtx *ctx,
+                           const AggregateParameters &parameters,
+                           const Record &rec) {
+  ValkeyModule_ReplyWithArray(ctx, VALKEYMODULE_POSTPONED_ARRAY_LEN);
+  size_t array_count = 0;
+  CHECK(rec.fields_.size() <= parameters.record_info_by_index_.size());
+  for (size_t i = 0; i < rec.fields_.size(); ++i) {
+    if (ReplyWithValue(
+            ctx, parameters.index_schema->GetAttributeDataType().ToProto(),
+            parameters.record_info_by_index_[i].output_name_,
+            parameters.record_info_by_index_[i].data_type_, rec.fields_[i],
+            parameters.dialect)) {
+      array_count += 2;
+    }
+  }
+  for (const auto &[name, value] : rec.extra_fields_) {
+    if (ReplyWithValue(
+            ctx, parameters.index_schema->GetAttributeDataType().ToProto(),
+            name, indexes::IndexerType::kNone, value, parameters.dialect)) {
+      array_count += 2;
+    }
+  }
+  ValkeyModule_ReplySetArrayLength(ctx, array_count);
+}
+
+// Reply a batch of records as the inner array [total, row0, row1, ...].
+// `batch` contains the records to emit; `total` is the full result count
+// (reported as the first element, same value on every cursor read).
+static void ReplyBatch(ValkeyModuleCtx *ctx,
+                       const AggregateParameters &parameters,
+                       const std::vector<RecordPtr> &batch, long long total) {
+  ValkeyModule_ReplyWithArray(ctx, 1 + batch.size());
+  ValkeyModule_ReplyWithLongLong(ctx, total);
+  for (const auto &rec : batch) {
+    ReplyOneRecord(ctx, parameters, *rec);
+  }
+}
+
+// Generate the final response from processed records.
+// When WITHCURSOR is set the reply is wrapped in a two-element outer array:
+//   [ [total, row0, ...], cursor_id ]
+// cursor_id is 0 when all rows fit in the first batch.
 absl::Status GenerateResponse(ValkeyModuleCtx *ctx,
                               AggregateParameters &parameters,
                               RecordSet &records) {
-  ValkeyModule_ReplyWithArray(ctx, 1 + records.size());
-  ValkeyModule_ReplyWithLongLong(ctx, static_cast<long long>(records.size()));
-
-  while (!records.empty()) {
-    auto rec = records.pop_front();
-    ValkeyModule_ReplyWithArray(ctx, VALKEYMODULE_POSTPONED_ARRAY_LEN);
-
-    size_t array_count = 0;
-
-    // Process referenced fields
-    CHECK(rec->fields_.size() <= parameters.record_info_by_index_.size());
-    for (size_t i = 0; i < rec->fields_.size(); ++i) {
-      if (ReplyWithValue(
-              ctx, parameters.index_schema->GetAttributeDataType().ToProto(),
-              parameters.record_info_by_index_[i].output_name_,
-              parameters.record_info_by_index_[i].data_type_, rec->fields_[i],
-              parameters.dialect)) {
-        array_count += 2;
-      }
+  if (!parameters.withcursor_) {
+    ValkeyModule_ReplyWithArray(ctx, 1 + records.size());
+    ValkeyModule_ReplyWithLongLong(ctx, static_cast<long long>(records.size()));
+    while (!records.empty()) {
+      ReplyOneRecord(ctx, parameters, *records.front());
+      records.pop_front();
     }
-
-    // Process unreferenced (extra) fields
-    for (const auto &[name, value] : rec->extra_fields_) {
-      if (ReplyWithValue(
-              ctx, parameters.index_schema->GetAttributeDataType().ToProto(),
-              name, indexes::IndexerType::kNone, value, parameters.dialect)) {
-        array_count += 2;
-      }
-    }
-
-    ValkeyModule_ReplySetArrayLength(ctx, array_count);
+    return absl::OkStatus();
   }
+
+  // WITHCURSOR: split into first batch + remainder stored in CursorManager.
+  const long long total = static_cast<long long>(records.size());
+  const size_t batch_size = parameters.cursor_count_;
+
+  std::vector<RecordPtr> batch;
+  batch.reserve(std::min(batch_size, records.size()));
+  while (batch.size() < batch_size && !records.empty()) {
+    batch.push_back(records.pop_front());
+  }
+
+  uint64_t cursor_id = 0;
+  if (!records.empty()) {
+    CursorReplyMeta meta{
+        .record_info_by_index = parameters.record_info_by_index_,
+        .index_schema = parameters.index_schema,
+        .dialect = static_cast<int>(parameters.dialect),
+    };
+    cursor_id = CursorManager::Instance().Create(
+        std::move(records), std::move(meta), batch_size,
+        parameters.cursor_max_idle_, parameters.index_schema_name, total);
+  }
+
+  ValkeyModule_ReplyWithArray(ctx, 2);
+  ReplyBatch(ctx, parameters, batch, total);
+  ValkeyModule_ReplyWithLongLong(ctx, static_cast<long long>(cursor_id));
 
   return absl::OkStatus();
 }

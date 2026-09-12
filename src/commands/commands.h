@@ -41,6 +41,7 @@ constexpr absl::string_view kListCommand{"FT._LIST"};
 constexpr absl::string_view kSearchCommand{"FT.SEARCH"};
 constexpr absl::string_view kDebugCommand{"FT._DEBUG"};
 constexpr absl::string_view kAggregateCommand{"FT.AGGREGATE"};
+constexpr absl::string_view kCursorCommand{"FT.CURSOR"};
 constexpr absl::string_view kInternalUpdateCommand{"FT.INTERNAL_UPDATE"};
 
 const absl::flat_hash_set<absl::string_view> kCreateCmdPermissions{
@@ -80,6 +81,8 @@ absl::Status FTDebugCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
                         int argc);
 absl::Status FTAggregateCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
                             int argc);
+absl::Status FTCursorCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
+                         int argc);
 absl::Status FTInternalUpdateCmd(ValkeyModuleCtx *ctx,
                                  ValkeyModuleString **argv, int argc);
 

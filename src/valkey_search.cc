@@ -23,6 +23,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "src/attribute_data_type.h"
+#include "src/commands/cursor_manager.h"
 #include "src/coordinator/client_pool.h"
 #include "src/coordinator/grpc_suspender.h"
 #include "src/coordinator/metadata_manager.h"
@@ -1213,6 +1214,8 @@ absl::Status ValkeySearch::Startup(ValkeyModuleCtx *ctx) {
         std::make_unique<coordinator::MetadataManager>(ctx, *client_pool_));
     coordinator::MetadataManager::Instance().RegisterForClusterMessages(ctx);
   }
+  aggregate::CursorManager::InitInstance(
+      std::make_unique<aggregate::CursorManager>());
   SchemaManager::InitInstance(std::make_unique<SchemaManager>(
       ctx, server_events::SubscribeToServerEvents, writer_thread_pool_.get(),
       options::GetUseCoordinator().GetValue() && IsCluster()));
@@ -1253,6 +1256,15 @@ void ValkeySearch::ResumeWriterThreadPool(ValkeyModuleCtx *ctx,
   writer_thread_pool_suspend_watch_ = std::nullopt;
 }
 
+static ValkeyModuleTimerID g_cursor_purge_timer_id = 0;
+static constexpr mstime_t kCursorPurgeIntervalMs = 60000;
+
+static void CursorPurgeTimerCallback(ValkeyModuleCtx *ctx, void *) {
+  aggregate::CursorManager::Instance().PurgeExpired();
+  g_cursor_purge_timer_id = ValkeyModule_CreateTimer(
+      ctx, kCursorPurgeIntervalMs, CursorPurgeTimerCallback, nullptr);
+}
+
 absl::Status ValkeySearch::OnLoad(ValkeyModuleCtx *ctx,
                                   ValkeyModuleString **argv, int argc) {
   ctx_ = ValkeyModule_GetDetachedThreadSafeContext(ctx);
@@ -1272,6 +1284,9 @@ absl::Status ValkeySearch::OnLoad(ValkeyModuleCtx *ctx,
   VMSDK_RETURN_IF_ERROR(LoadAndParseArgv(ctx, argv, argc));
   VectorRegistry::Construct(ctx_);
   VMSDK_RETURN_IF_ERROR(Startup(ctx));
+
+  g_cursor_purge_timer_id = ValkeyModule_CreateTimer(
+      ctx, kCursorPurgeIntervalMs, CursorPurgeTimerCallback, nullptr);
 
   ValkeyModule_SetModuleOptions(
       ctx, VALKEYMODULE_OPTIONS_HANDLE_IO_ERRORS |
@@ -1310,6 +1325,10 @@ bool ValkeySearch::IsChildProcess() {
 }
 
 void ValkeySearch::OnUnload(ValkeyModuleCtx *ctx) {
+  if (g_cursor_purge_timer_id != 0) {
+    ValkeyModule_StopTimer(ctx, g_cursor_purge_timer_id, nullptr);
+    g_cursor_purge_timer_id = 0;
+  }
   reader_thread_pool_ = nullptr;
   writer_thread_pool_ = nullptr;
   VectorRegistry::Destruct();

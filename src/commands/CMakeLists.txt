@@ -1,4 +1,6 @@
 set(SRCS_COMMANDS
+    ${CMAKE_CURRENT_LIST_DIR}/cursor_manager.cc
+    ${CMAKE_CURRENT_LIST_DIR}/cursor_manager.h
     ${CMAKE_CURRENT_LIST_DIR}/ft_aggregate.cc
     ${CMAKE_CURRENT_LIST_DIR}/ft_aggregate.h
     ${CMAKE_CURRENT_LIST_DIR}/ft_aggregate_parser.cc
@@ -6,9 +8,11 @@ set(SRCS_COMMANDS
     ${CMAKE_CURRENT_LIST_DIR}/ft_aggregate_exec.cc
     ${CMAKE_CURRENT_LIST_DIR}/ft_aggregate_exec.h
     ${CMAKE_CURRENT_LIST_DIR}/ft_create.cc
+    ${CMAKE_CURRENT_LIST_DIR}/ft_cursor.cc
+    ${CMAKE_CURRENT_LIST_DIR}/ft_cursor.h
     ${CMAKE_CURRENT_LIST_DIR}/ft_debug.cc
     ${CMAKE_CURRENT_LIST_DIR}/ft_dropindex.cc
-    ${CMAKE_CURRENT_LIST_DIR}/ft_info.cc 
+    ${CMAKE_CURRENT_LIST_DIR}/ft_info.cc
     ${CMAKE_CURRENT_LIST_DIR}/ft_internal_update.cc
     ${CMAKE_CURRENT_LIST_DIR}/ft_list.cc
     ${CMAKE_CURRENT_LIST_DIR}/ft_search.cc
