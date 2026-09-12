@@ -1,239 +1,361 @@
-# Base common test library - used by all test suites
-set(SRCS_COMMON ${CMAKE_CURRENT_LIST_DIR}/common.cc
-                ${CMAKE_CURRENT_LIST_DIR}/common.h)
+#Base common test library - used by all test suites
+set(SRCS_COMMON ${CMAKE_CURRENT_LIST_DIR} /
+    common.cc ${CMAKE_CURRENT_LIST_DIR} / common.h)
 
-add_library(testing_common_base STATIC ${SRCS_COMMON})
-valkey_search_target_update_san_flags(testing_common_base)
+    add_library(testing_common_base STATIC ${
+        SRCS_COMMON}) valkey_search_target_update_san_flags(testing_common_base)
 
-target_include_directories(testing_common_base
-                           PUBLIC ${HIGHWAY_HASH_INCLUDE_PATH})
-target_include_directories(testing_common_base PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-# Core libraries used by most test suites
-target_link_libraries(testing_common_base PUBLIC attribute_data_type)
-target_link_libraries(testing_common_base PUBLIC index_schema)
-target_link_libraries(testing_common_base PUBLIC keyspace_event_manager)
-target_link_libraries(testing_common_base PUBLIC schema_manager)
-target_link_libraries(testing_common_base PUBLIC valkey_search)
-target_link_libraries(testing_common_base PUBLIC metadata_manager)
-target_link_libraries(testing_common_base PUBLIC vector_base)
-target_link_libraries(testing_common_base PUBLIC vector_hnsw)
-target_link_libraries(testing_common_base PUBLIC search)
-target_link_libraries(testing_common_base PUBLIC string_interning)
-target_link_libraries(testing_common_base PUBLIC index_schema_cc_proto)
-target_link_libraries(testing_common_base PUBLIC vmsdklib)
-target_link_libraries(testing_common_base PUBLIC numeric)
-target_link_libraries(testing_common_base PUBLIC tag)
-target_link_libraries(testing_common_base PUBLIC vector_flat)
-target_link_libraries(testing_common_base PUBLIC predicate)
-target_link_libraries(testing_common_base PUBLIC index_base)
-target_link_libraries(testing_common_base PUBLIC filter_parser)
-target_link_libraries(testing_common_base PUBLIC allocator)
-target_link_libraries(testing_common_base PUBLIC intrusive_ref_count)
-target_link_libraries(testing_common_base PUBLIC patricia_tree)
-target_link_libraries(testing_common_base PUBLIC server_events)
-target_link_libraries(testing_common_base PUBLIC rdb_serialization)
-target_link_libraries(testing_common_base PUBLIC iostream)
-target_link_libraries(testing_common_base PUBLIC valkey_module)
-target_link_libraries(testing_common_base PUBLIC vmsdk_testing_infra)
-target_link_libraries(testing_common_base PUBLIC expr)
+        target_include_directories(testing_common_base PUBLIC ${
+            HIGHWAY_HASH_INCLUDE_PATH}) target_include_directories(testing_common_base PUBLIC ${
+            CMAKE_CURRENT_LIST_DIR})
+#Core libraries used by most test suites
+            target_link_libraries(testing_common_base
+                                      PUBLIC attribute_data_type) target_link_libraries(testing_common_base PUBLIC index_schema) target_link_libraries(testing_common_base PUBLIC keyspace_event_manager) target_link_libraries(testing_common_base PUBLIC schema_manager) target_link_libraries(testing_common_base PUBLIC valkey_search) target_link_libraries(testing_common_base PUBLIC metadata_manager) target_link_libraries(testing_common_base
+                                                                                                                                                                                                                                                                                                                                                                                                                                        PUBLIC
+                                                                                                                                                                                                                                                                                                                                                                                                                                            vector_base) target_link_libraries(testing_common_base
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   PUBLIC
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       vector_hnsw) target_link_libraries(testing_common_base PUBLIC search) target_link_libraries(testing_common_base PUBLIC string_interning) target_link_libraries(testing_common_base PUBLIC index_schema_cc_proto) target_link_libraries(testing_common_base PUBLIC vmsdklib) target_link_libraries(testing_common_base PUBLIC
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             numeric) target_link_libraries(testing_common_base
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                PUBLIC
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    tag) target_link_libraries(testing_common_base PUBLIC vector_flat) target_link_libraries(testing_common_base PUBLIC predicate) target_link_libraries(testing_common_base PUBLIC index_base) target_link_libraries(testing_common_base PUBLIC
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          filter_parser) target_link_libraries(testing_common_base
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   PUBLIC
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       allocator) target_link_libraries(testing_common_base PUBLIC intrusive_ref_count) target_link_libraries(testing_common_base PUBLIC patricia_tree) target_link_libraries(testing_common_base PUBLIC server_events) target_link_libraries(testing_common_base PUBLIC
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  rdb_serialization) target_link_libraries(testing_common_base PUBLIC iostream) target_link_libraries(testing_common_base PUBLIC valkey_module) target_link_libraries(testing_common_base
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          PUBLIC
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              vmsdk_testing_infra) target_link_libraries(testing_common_base
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             PUBLIC
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 expr)
 
-# Coordinator common library - used by tests that need coordinator functionality
-add_library(testing_common_coordinator INTERFACE)
-target_link_libraries(testing_common_coordinator INTERFACE coordinator_common)
-target_link_libraries(testing_common_coordinator INTERFACE coordinator_cc_proto)
-target_link_libraries(testing_common_coordinator INTERFACE util)
-target_link_libraries(testing_common_coordinator INTERFACE client)
-target_link_libraries(testing_common_coordinator INTERFACE client_pool)
+#Coordinator common library - used by tests that need coordinator functionality
+                add_library(testing_common_coordinator INTERFACE) target_link_libraries(testing_common_coordinator INTERFACE coordinator_common) target_link_libraries(testing_common_coordinator INTERFACE coordinator_cc_proto) target_link_libraries(
+                    testing_common_coordinator
+                        INTERFACE util) target_link_libraries(testing_common_coordinator INTERFACE client) target_link_libraries(testing_common_coordinator INTERFACE client_pool)
 
 # 1. Commands Test Suite - consolidates FT command execution tests
-set(COMMANDS_TEST_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/ft_aggregate_exec_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/ft_search_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/ft_dropindex_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/ft_list_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/ft_info_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/ft_create_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/commands/ft_internal_update_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/qma_weight_parser_test.cc)
+                    set(COMMANDS_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR} /
+                        ft_aggregate_exec_test.cc ${CMAKE_CURRENT_LIST_DIR} /
+                        ft_search_test.cc ${CMAKE_CURRENT_LIST_DIR} /
+                        ft_dropindex_test.cc ${CMAKE_CURRENT_LIST_DIR} /
+                        ft_list_test
+                            .cc ${CMAKE_CURRENT_LIST_DIR} /
+                        ft_info_test
+                            .cc ${CMAKE_CURRENT_LIST_DIR} /
+                        ft_create_test.cc ${CMAKE_CURRENT_LIST_DIR} / commands /
+                        ft_internal_update_test.cc ${CMAKE_CURRENT_LIST_DIR} /
+                        qma_weight_parser_test.cc)
 
-add_executable(commands_test ${COMMANDS_TEST_SOURCES})
-target_include_directories(commands_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(commands_test PRIVATE testing_common_base)
-target_link_libraries(commands_test PRIVATE testing_common_coordinator)
-target_link_libraries(commands_test PRIVATE ft_create_parser)
-target_link_libraries(commands_test PRIVATE ft_search_parser)
-target_link_libraries(commands_test PRIVATE commands)
-target_link_libraries(commands_test PRIVATE vmsdklib)
-finalize_test_flags(commands_test)
+                        add_executable(commands_test ${
+                            COMMANDS_TEST_SOURCES}) target_include_directories(commands_test PUBLIC ${
+                            CMAKE_CURRENT_LIST_DIR}) target_link_libraries(commands_test PRIVATE testing_common_base) target_link_libraries(commands_test PRIVATE testing_common_coordinator) target_link_libraries(commands_test PRIVATE ft_create_parser) target_link_libraries(commands_test PRIVATE ft_search_parser) target_link_libraries(commands_test PRIVATE commands) target_link_libraries(commands_test PRIVATE vmsdklib) finalize_test_flags(commands_test)
 
-# Commands Parser Test Suite - dedicated suite for aggregate and create command parsing tests
-set(COMMANDS_PARSER_TEST_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/ft_aggregate_parser_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/ft_create_parser_test.cc)
+#FT.CURSOR unit tests
+                            add_executable(
+                                ft_cursor_test ${CMAKE_CURRENT_LIST_DIR} /
+                                ft_cursor_test.cc) target_include_directories(ft_cursor_test
+                                                                                  PUBLIC ${
+                                                                                      CMAKE_CURRENT_LIST_DIR}) target_link_libraries(ft_cursor_test PRIVATE testing_common_base) target_link_libraries(ft_cursor_test PRIVATE commands) target_link_libraries(ft_cursor_test PRIVATE
+                                                                                                                                                                                                                                                                  vmsdklib) finalize_test_flags(ft_cursor_test)
 
-add_executable(commands_parser_test ${COMMANDS_PARSER_TEST_SOURCES})
-target_include_directories(commands_parser_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(commands_parser_test PRIVATE testing_common_base)
-target_link_libraries(commands_parser_test PRIVATE testing_common_coordinator)
-target_link_libraries(commands_parser_test PRIVATE ft_create_parser)
-target_link_libraries(commands_parser_test PRIVATE ft_search_parser)
-target_link_libraries(commands_parser_test PRIVATE commands)
-target_link_libraries(commands_parser_test PRIVATE vmsdklib)
-finalize_test_flags(commands_parser_test)
+#Commands Parser Test Suite - \
+    dedicated suite for aggregate and create command parsing tests
+                                set(COMMANDS_PARSER_TEST_SOURCES ${
+                                        CMAKE_CURRENT_LIST_DIR} /
+                                    ft_aggregate_parser_test
+                                        .cc ${CMAKE_CURRENT_LIST_DIR} /
+                                    ft_create_parser_test.cc)
 
-# FT.SEARCH Parser Test Suite - dedicated suite for FT.SEARCH command parsing tests
-add_executable(ft_search_parser_test ${CMAKE_CURRENT_LIST_DIR}/ft_search_parser_test.cc)
-target_include_directories(ft_search_parser_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(ft_search_parser_test PRIVATE testing_common_base)
-target_link_libraries(ft_search_parser_test PRIVATE testing_common_coordinator)
-target_link_libraries(ft_search_parser_test PRIVATE ft_create_parser)
-target_link_libraries(ft_search_parser_test PRIVATE ft_search_parser)
-target_link_libraries(ft_search_parser_test PRIVATE commands)
-target_link_libraries(ft_search_parser_test PRIVATE vmsdklib)
-finalize_test_flags(ft_search_parser_test)
+                                    add_executable(commands_parser_test ${COMMANDS_PARSER_TEST_SOURCES}) target_include_directories(commands_parser_test PUBLIC ${CMAKE_CURRENT_LIST_DIR}) target_link_libraries(commands_parser_test PRIVATE testing_common_base) target_link_libraries(commands_parser_test PRIVATE testing_common_coordinator) target_link_libraries(commands_parser_test PRIVATE ft_create_parser) target_link_libraries(commands_parser_test PRIVATE ft_search_parser) target_link_libraries(commands_parser_test PRIVATE commands) target_link_libraries(
+                                        commands_parser_test PRIVATE
+                                            vmsdklib) finalize_test_flags(commands_parser_test)
 
-# Filter Test Suite - dedicated suite for filter expression evaluation and parsing
-add_executable(filter_test ${CMAKE_CURRENT_LIST_DIR}/filter_test.cc)
-target_include_directories(filter_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(filter_test PRIVATE testing_common_base)
-target_link_libraries(filter_test PRIVATE testing_common_coordinator)
-target_link_libraries(filter_test PRIVATE ft_create_parser)
-target_link_libraries(filter_test PRIVATE ft_search_parser)
-target_link_libraries(filter_test PRIVATE commands)
-target_link_libraries(filter_test PRIVATE vmsdklib)
-finalize_test_flags(filter_test)
+#FT.SEARCH Parser Test Suite - \
+    dedicated suite for FT.SEARCH command parsing tests
+                                        add_executable(
+                                            ft_search_parser_test ${
+                                                CMAKE_CURRENT_LIST_DIR} /
+                                            ft_search_parser_test.cc)
+                                            target_include_directories(ft_search_parser_test
+                                                                           PUBLIC ${
+                                                                               CMAKE_CURRENT_LIST_DIR}) target_link_libraries(ft_search_parser_test PRIVATE testing_common_base) target_link_libraries(ft_search_parser_test PRIVATE testing_common_coordinator) target_link_libraries(ft_search_parser_test PRIVATE ft_create_parser) target_link_libraries(ft_search_parser_test PRIVATE ft_search_parser) target_link_libraries(ft_search_parser_test PRIVATE commands) target_link_libraries(ft_search_parser_test PRIVATE vmsdklib) finalize_test_flags(ft_search_parser_test)
 
-# 1. Indexes Test Suite - consolidates index-related tests
-set(INDEXES_TEST_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/index_schema_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/lexer_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/numeric_index_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/posting_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/tag_index_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/text_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/space_distance_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/vector_normalize_test.cc)
+#Filter Test Suite - \
+    dedicated suite for filter expression evaluation and parsing
+                                                add_executable(
+                                                    filter_test
+                                                        ${CMAKE_CURRENT_LIST_DIR} /
+                                                    filter_test
+                                                        .cc) target_include_directories(filter_test PUBLIC ${
+                                                    CMAKE_CURRENT_LIST_DIR}) target_link_libraries(filter_test PRIVATE testing_common_base) target_link_libraries(filter_test PRIVATE testing_common_coordinator) target_link_libraries(filter_test PRIVATE ft_create_parser) target_link_libraries(filter_test PRIVATE ft_search_parser) target_link_libraries(filter_test PRIVATE commands) target_link_libraries(filter_test PRIVATE vmsdklib) finalize_test_flags(filter_test)
 
-add_executable(indexes_test ${INDEXES_TEST_SOURCES})
-target_include_directories(indexes_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(indexes_test PRIVATE testing_common_base)
-target_link_libraries(indexes_test PRIVATE text)
-target_link_libraries(indexes_test PRIVATE hnswlib_vmsdk)
-finalize_test_flags(indexes_test)
+# 1. Indexes Test Suite - consolidates index - related tests
+                                                    set(INDEXES_TEST_SOURCES ${
+                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                        index_schema_test.cc ${
+                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                        lexer_test.cc ${
+                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                        numeric_index_test.cc ${
+                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                        posting_test
+                                                            .cc ${
+                                                                CMAKE_CURRENT_LIST_DIR} /
+                                                        tag_index_test.cc ${
+                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                        text_test.cc ${
+                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                        space_distance_test.cc ${
+                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                        vector_normalize_test
+                                                            .cc)
 
-# Vector Index Test Suite - dedicated suite for vector index and registry tests
-set(VECTOR_INDEX_TEST_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/vector_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/vector_registry_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/vector_registry_state_machine_test.cc)
+                                                        add_executable(indexes_test ${INDEXES_TEST_SOURCES}) target_include_directories(indexes_test PUBLIC ${CMAKE_CURRENT_LIST_DIR}) target_link_libraries(indexes_test PRIVATE testing_common_base) target_link_libraries(indexes_test PRIVATE text) target_link_libraries(
+                                                            indexes_test PRIVATE
+                                                                hnswlib_vmsdk) finalize_test_flags(indexes_test)
 
-add_executable(vector_index_test ${VECTOR_INDEX_TEST_SOURCES})
-target_include_directories(vector_index_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(vector_index_test PRIVATE testing_common_base)
-target_link_libraries(vector_index_test PRIVATE text)
-target_link_libraries(vector_index_test PRIVATE hnswlib_vmsdk)
-finalize_test_flags(vector_index_test)
+#Vector Index Test Suite - dedicated suite for vector index and registry tests
+                                                            set(VECTOR_INDEX_TEST_SOURCES
+                                                                    ${CMAKE_CURRENT_LIST_DIR} /
+                                                                vector_test.cc ${
+                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                vector_registry_test
+                                                                    .cc ${
+                                                                        CMAKE_CURRENT_LIST_DIR} /
+                                                                vector_registry_state_machine_test
+                                                                    .cc)
+
+                                                                add_executable(vector_index_test ${VECTOR_INDEX_TEST_SOURCES}) target_include_directories(
+                                                                    vector_index_test PUBLIC
+                                                                        ${CMAKE_CURRENT_LIST_DIR}) target_link_libraries(vector_index_test PRIVATE
+                                                                                                                             testing_common_base)
+                                                                    target_link_libraries(vector_index_test PRIVATE text) target_link_libraries(
+                                                                        vector_index_test PRIVATE
+                                                                            hnswlib_vmsdk) finalize_test_flags(vector_index_test)
 
 # 1. Core Test Suite - consolidates core functionality tests
-set(CORE_TEST_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/valkey_search_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/schema_manager_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/keyspace_event_manager_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/server_events_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/attribute_data_type_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/multi_exec_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/acl_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/rdb_serialization_test.cc)
+                                                                        set(CORE_TEST_SOURCES
+                                                                                ${CMAKE_CURRENT_LIST_DIR} /
+                                                                            valkey_search_test
+                                                                                .cc ${
+                                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                            schema_manager_test
+                                                                                .cc ${
+                                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                            keyspace_event_manager_test
+                                                                                .cc ${
+                                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                            server_events_test
+                                                                                .cc ${
+                                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                            attribute_data_type_test
+                                                                                .cc ${
+                                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                            multi_exec_test
+                                                                                .cc ${
+                                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                            acl_test
+                                                                                .cc ${
+                                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                            rdb_serialization_test
+                                                                                .cc)
 
-add_executable(core_test ${CORE_TEST_SOURCES})
-target_include_directories(core_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(core_test PRIVATE testing_common_base)
-target_link_libraries(core_test PRIVATE testing_common_coordinator)
-target_link_libraries(core_test PRIVATE metrics)
-target_link_libraries(core_test PRIVATE commands)
-target_link_libraries(core_test PRIVATE acl)
-target_link_libraries(core_test PRIVATE vmsdklib)
-finalize_test_flags(core_test)
+                                                                            add_executable(
+                                                                                core_test
+                                                                                    ${CORE_TEST_SOURCES})
+                                                                                target_include_directories(
+                                                                                    core_test PUBLIC ${CMAKE_CURRENT_LIST_DIR}) target_link_libraries(core_test
+                                                                                                                                                          PRIVATE testing_common_base) target_link_libraries(core_test PRIVATE
+                                                                                                                                                                                                                 testing_common_coordinator)
+                                                                                    target_link_libraries(
+                                                                                        core_test PRIVATE
+                                                                                            metrics) target_link_libraries(core_test PRIVATE
+                                                                                                                               commands)
+                                                                                        target_link_libraries(
+                                                                                            core_test PRIVATE
+                                                                                                acl)
+                                                                                            target_link_libraries(
+                                                                                                core_test PRIVATE
+                                                                                                    vmsdklib) finalize_test_flags(core_test)
 
 # 1. Query Test Suite - consolidates query and search related tests
-set(QUERY_TEST_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/search_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/find_vector_delimiter_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/query/response_generator_test.cc)
+                                                                                                set(QUERY_TEST_SOURCES
+                                                                                                        ${CMAKE_CURRENT_LIST_DIR} /
+                                                                                                    search_test
+                                                                                                        .cc ${
+                                                                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                                                                    find_vector_delimiter_test
+                                                                                                        .cc ${
+                                                                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                                                                    query /
+                                                                                                    response_generator_test
+                                                                                                        .cc)
 
-add_executable(query_test ${QUERY_TEST_SOURCES})
-target_include_directories(query_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_include_directories(query_test PUBLIC ${CMAKE_CURRENT_LIST_DIR}/query)
-target_link_libraries(query_test PRIVATE testing_common_base)
-target_link_libraries(query_test PRIVATE testing_common_coordinator)
-target_link_libraries(query_test PRIVATE fanout)
-target_link_libraries(query_test PRIVATE response_generator)
-target_link_libraries(query_test PRIVATE search_converter)
-target_link_libraries(query_test PRIVATE scoring)
-target_link_libraries(query_test PRIVATE text)
-finalize_test_flags(query_test)
+                                                                                                    add_executable(
+                                                                                                        query_test
+                                                                                                            ${
+                                                                                                                QUERY_TEST_SOURCES}) target_include_directories(query_test
+                                                                                                                                                                    PUBLIC
+                                                                                                                                                                        ${CMAKE_CURRENT_LIST_DIR}) target_include_directories(query_test
+                                                                                                                                                                                                                                  PUBLIC
+                                                                                                                                                                                                                                      ${CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                                                              query)
+                                                                                                        target_link_libraries(
+                                                                                                            query_test
+                                                                                                                PRIVATE testing_common_base)
+                                                                                                            target_link_libraries(
+                                                                                                                query_test
+                                                                                                                    PRIVATE testing_common_coordinator)
+                                                                                                                target_link_libraries(
+                                                                                                                    query_test
+                                                                                                                        PRIVATE fanout)
+                                                                                                                    target_link_libraries(
+                                                                                                                        query_test
+                                                                                                                            PRIVATE response_generator)
+                                                                                                                        target_link_libraries(query_test PRIVATE search_converter) target_link_libraries(query_test PRIVATE scoring) target_link_libraries(query_test PRIVATE
+                                                                                                                                                                                                                                                               text)
+                                                                                                                            finalize_test_flags(
+                                                                                                                                query_test)
 
 # 1. Coordinator Test Suite - consolidates coordinator related tests
-set(COORDINATOR_TEST_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/coordinator/metadata_manager_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/coordinator/client_test.cc)
+                                                                                                                                set(COORDINATOR_TEST_SOURCES
+                                                                                                                                        ${CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                    coordinator /
+                                                                                                                                    metadata_manager_test
+                                                                                                                                        .cc ${
+                                                                                                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                    coordinator /
+                                                                                                                                    client_test
+                                                                                                                                        .cc)
 
-add_executable(coordinator_test ${COORDINATOR_TEST_SOURCES})
-target_include_directories(coordinator_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_include_directories(coordinator_test
-                           PUBLIC ${CMAKE_CURRENT_LIST_DIR}/coordinator)
-target_link_libraries(coordinator_test PRIVATE testing_common_base)
-target_link_libraries(coordinator_test PRIVATE testing_common_coordinator)
-finalize_test_flags(coordinator_test)
+                                                                                                                                    add_executable(
+                                                                                                                                        coordinator_test
+                                                                                                                                            ${
+                                                                                                                                                COORDINATOR_TEST_SOURCES}) target_include_directories(coordinator_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+                                                                                                                                        target_include_directories(
+                                                                                                                                            coordinator_test
+                                                                                                                                                PUBLIC
+                                                                                                                                                    ${CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                            coordinator)
+                                                                                                                                            target_link_libraries(
+                                                                                                                                                coordinator_test
+                                                                                                                                                    PRIVATE
+                                                                                                                                                        testing_common_base)
+                                                                                                                                                target_link_libraries(
+                                                                                                                                                    coordinator_test
+                                                                                                                                                        PRIVATE
+                                                                                                                                                            testing_common_coordinator)
+                                                                                                                                                    finalize_test_flags(
+                                                                                                                                                        coordinator_test)
 
-# Create coordinator_common interface library (used by coordinator tests)
-set(SRCS_COORDINATOR_COMMON coordinator/common.h)
+#Create coordinator_common interface library(used by coordinator tests)
+                                                                                                                                                        set(SRCS_COORDINATOR_COMMON
+                                                                                                                                                                coordinator /
+                                                                                                                                                            common
+                                                                                                                                                                .h)
 
-add_library(coordinator_common INTERFACE)
-target_include_directories(coordinator_common
-                           INTERFACE ${CMAKE_CURRENT_LIST_DIR}/coordinator)
-target_link_libraries(coordinator_common INTERFACE client)
-target_link_libraries(coordinator_common INTERFACE client_pool)
-target_link_libraries(coordinator_common INTERFACE server)
+                                                                                                                                                            add_library(
+                                                                                                                                                                coordinator_common
+                                                                                                                                                                    INTERFACE)
+                                                                                                                                                                target_include_directories(coordinator_common INTERFACE ${
+                                                                                                                                                                                               CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                           coordinator)
+                                                                                                                                                                    target_link_libraries(coordinator_common
+                                                                                                                                                                                              INTERFACE
+                                                                                                                                                                                                  client)
+                                                                                                                                                                        target_link_libraries(
+                                                                                                                                                                            coordinator_common INTERFACE
+                                                                                                                                                                                client_pool)
+                                                                                                                                                                            target_link_libraries(coordinator_common
+                                                                                                                                                                                                      INTERFACE
+                                                                                                                                                                                                          server)
 
 # 1. Utils Test Suite - consolidates utility tests
-set(UTILS_TEST_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/utils/allocator_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/utils/intrusive_list_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/utils/intrusive_ref_count_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/utils/lru_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/utils/patricia_tree_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/utils/numeric_btree_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/utils/string_interning_test.cc)
+                                                                                                                                                                                set(UTILS_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR} / utils /
+                                                                                                                                                                                    allocator_test
+                                                                                                                                                                                        .cc ${
+                                                                                                                                                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                    utils /
+                                                                                                                                                                                    intrusive_list_test
+                                                                                                                                                                                        .cc ${
+                                                                                                                                                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                    utils /
+                                                                                                                                                                                    intrusive_ref_count_test
+                                                                                                                                                                                        .cc ${
+                                                                                                                                                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                    utils /
+                                                                                                                                                                                    lru_test
+                                                                                                                                                                                        .cc ${CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                    utils /
+                                                                                                                                                                                    patricia_tree_test
+                                                                                                                                                                                        .cc ${
+                                                                                                                                                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                    utils /
+                                                                                                                                                                                    numeric_btree_test
+                                                                                                                                                                                        .cc ${
+                                                                                                                                                                                            CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                    utils /
+                                                                                                                                                                                    string_interning_test
+                                                                                                                                                                                        .cc)
 
-add_executable(valkey_utils_test ${UTILS_TEST_SOURCES})
-target_include_directories(valkey_utils_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_include_directories(valkey_utils_test
-                           PUBLIC ${CMAKE_CURRENT_LIST_DIR}/utils)
-target_link_libraries(valkey_utils_test PRIVATE testing_common_base)
-target_link_libraries(valkey_utils_test PRIVATE intrusive_list)
-target_link_libraries(valkey_utils_test PRIVATE lru)
-target_link_libraries(valkey_utils_test PRIVATE numeric_btree)
-finalize_test_flags(valkey_utils_test)
+                                                                                                                                                                                    add_executable(
+                                                                                                                                                                                        valkey_utils_test ${UTILS_TEST_SOURCES}) target_include_directories(valkey_utils_test
+                                                                                                                                                                                                                                                                PUBLIC ${CMAKE_CURRENT_LIST_DIR}) target_include_directories(valkey_utils_test
+                                                                                                                                                                                                                                                                                                                                 PUBLIC ${
+                                                                                                                                                                                                                                                                                                                                     CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                                                                                                                                                             utils) target_link_libraries(valkey_utils_test PRIVATE
+                                                                                                                                                                                                                                                                                                                                                              testing_common_base) target_link_libraries(valkey_utils_test
+                                                                                                                                                                                                                                                                                                                                                                                                             PRIVATE
+                                                                                                                                                                                                                                                                                                                                                                                                                 intrusive_list) target_link_libraries(valkey_utils_test PRIVATE
+                                                                                                                                                                                                                                                                                                                                                                                                                                                           lru) target_link_libraries(valkey_utils_test
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          PRIVATE
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              numeric_btree) finalize_test_flags(valkey_utils_test)
 
 # 7. Text Index Test Suite
-add_executable(text_index_test
-    ${CMAKE_CURRENT_LIST_DIR}/flat_position_map_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/radix_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/rax_wrapper_test.cc
-    ${CMAKE_CURRENT_LIST_DIR}/text_index_schema_test.cc)
-target_include_directories(text_index_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(text_index_test PRIVATE testing_common_base)
-target_link_libraries(text_index_test PRIVATE text)
-finalize_test_flags(text_index_test)
+                                                                                                                                                                                        add_executable(
+                                                                                                                                                                                            text_index_test
+                                                                                                                                                                                                ${CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                            flat_position_map_test
+                                                                                                                                                                                                .cc ${
+                                                                                                                                                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                            radix_test
+                                                                                                                                                                                                .cc ${
+                                                                                                                                                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                            rax_wrapper_test
+                                                                                                                                                                                                .cc ${
+                                                                                                                                                                                                    CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                            text_index_schema_test
+                                                                                                                                                                                                .cc)
+                                                                                                                                                                                            target_include_directories(
+                                                                                                                                                                                                text_index_test PUBLIC
+                                                                                                                                                                                                    ${CMAKE_CURRENT_LIST_DIR})
+                                                                                                                                                                                                target_link_libraries(
+                                                                                                                                                                                                    text_index_test PRIVATE
+                                                                                                                                                                                                        testing_common_base) target_link_libraries(text_index_test
+                                                                                                                                                                                                                                                       PRIVATE
+                                                                                                                                                                                                                                                           text)
+                                                                                                                                                                                                    finalize_test_flags(
+                                                                                                                                                                                                        text_index_test)
 
 # 8. Scoring Test Suite
-add_executable(scoring_test
-    ${CMAKE_CURRENT_LIST_DIR}/scoring/bm25std_scorer_test.cc)
-target_include_directories(scoring_test PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(scoring_test PRIVATE testing_common_base)
-target_link_libraries(scoring_test PRIVATE scoring)
-finalize_test_flags(scoring_test)
+                                                                                                                                                                                                        add_executable(
+                                                                                                                                                                                                            scoring_test
+                                                                                                                                                                                                                ${CMAKE_CURRENT_LIST_DIR} /
+                                                                                                                                                                                                            scoring /
+                                                                                                                                                                                                            bm25std_scorer_test
+                                                                                                                                                                                                                .cc)
+                                                                                                                                                                                                            target_include_directories(scoring_test PUBLIC
+                                                                                                                                                                                                                                           ${CMAKE_CURRENT_LIST_DIR})
+                                                                                                                                                                                                                target_link_libraries(
+                                                                                                                                                                                                                    scoring_test
+                                                                                                                                                                                                                        PRIVATE
+                                                                                                                                                                                                                            testing_common_base)
+                                                                                                                                                                                                                    target_link_libraries(
+                                                                                                                                                                                                                        scoring_test
+                                                                                                                                                                                                                            PRIVATE
+                                                                                                                                                                                                                                scoring)
+                                                                                                                                                                                                                        finalize_test_flags(
+                                                                                                                                                                                                                            scoring_test)
 
 # 9. Expr Test Suite
-add_subdirectory(expr)
+                                                                                                                                                                                                                            add_subdirectory(
+                                                                                                                                                                                                                                expr)
