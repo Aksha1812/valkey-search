@@ -128,5 +128,9 @@ struct FlatParameters : public FTCreateVectorParameters {
 
 absl::StatusOr<data_model::IndexSchema> ParseFTCreateArgs(
     ValkeyModuleCtx* ctx, ValkeyModuleString** argv, int argc);
+
+absl::StatusOr<data_model::IndexSchema> ParseFTAlterArgs(
+    const data_model::IndexSchema& existing_proto, ValkeyModuleString** argv,
+    int argc);
 }  // namespace valkey_search
 #endif  // VALKEYSEARCH_SRC_COMMANDS_FT_CREATE_PARSER_H_

@@ -54,6 +54,10 @@ class SchemaManager {
   CreateIndexSchema(ValkeyModuleCtx *ctx,
                     const data_model::IndexSchema &index_schema_proto)
       ABSL_LOCKS_EXCLUDED(db_to_index_schemas_mutex_);
+  absl::StatusOr<valkey_search::coordinator::IndexFingerprintVersion>
+  AlterIndexSchema(ValkeyModuleCtx *ctx,
+                   const data_model::IndexSchema &updated_proto)
+      ABSL_LOCKS_EXCLUDED(db_to_index_schemas_mutex_);
   absl::Status ImportIndexSchema(std::shared_ptr<IndexSchema> index_schema)
       ABSL_LOCKS_EXCLUDED(db_to_index_schemas_mutex_);
   absl::Status RemoveIndexSchema(int db_num, absl::string_view name)

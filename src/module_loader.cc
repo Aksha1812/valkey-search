@@ -49,6 +49,14 @@ vmsdk::module::Options options = {
                 .cmd_func = &vmsdk::CreateCommand<valkey_search::FTCreateCmd>,
             },
             {
+                .cmd_name = valkey_search::kAlterCommand,
+                .permissions =
+                    ACLPermissionFormatter(valkey_search::kAlterCmdPermissions),
+                .flags = {vmsdk::module::kWriteFlag, vmsdk::module::kFastFlag,
+                          vmsdk::module::kDenyOOMFlag},
+                .cmd_func = &vmsdk::CreateCommand<valkey_search::FTAlterCmd>,
+            },
+            {
                 .cmd_name = valkey_search::kDropIndexCommand,
                 .permissions = ACLPermissionFormatter(
                     valkey_search::kDropIndexCmdPermissions),

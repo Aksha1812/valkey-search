@@ -35,6 +35,7 @@ constexpr absl::string_view kAdminCategory{"@admin"};
 constexpr absl::string_view kDangerousCategory{"@dangerous"};
 
 constexpr absl::string_view kCreateCommand{"FT.CREATE"};
+constexpr absl::string_view kAlterCommand{"FT.ALTER"};
 constexpr absl::string_view kDropIndexCommand{"FT.DROPINDEX"};
 constexpr absl::string_view kInfoCommand{"FT.INFO"};
 constexpr absl::string_view kListCommand{"FT._LIST"};
@@ -44,6 +45,8 @@ constexpr absl::string_view kAggregateCommand{"FT.AGGREGATE"};
 constexpr absl::string_view kInternalUpdateCommand{"FT.INTERNAL_UPDATE"};
 
 const absl::flat_hash_set<absl::string_view> kCreateCmdPermissions{
+    kSearchCategory, kWriteCategory, kFastCategory};
+const absl::flat_hash_set<absl::string_view> kAlterCmdPermissions{
     kSearchCategory, kWriteCategory, kFastCategory};
 const absl::flat_hash_set<absl::string_view> kDropIndexCmdPermissions{
     kSearchCategory, kWriteCategory, kFastCategory};
@@ -68,6 +71,8 @@ inline absl::flat_hash_set<absl::string_view> PrefixACLPermissions(
 
 absl::Status FTCreateCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
                          int argc);
+absl::Status FTAlterCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
+                        int argc);
 absl::Status FTDropIndexCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
                             int argc);
 absl::Status FTInfoCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,

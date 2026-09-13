@@ -768,6 +768,101 @@ absl::StatusOr<data_model::IndexSchema> ParseFTCreateArgs(
   }
   return index_schema_proto;
 }
+
+absl::StatusOr<data_model::IndexSchema> ParseFTAlterArgs(
+    const data_model::IndexSchema &existing_proto, ValkeyModuleString **argv,
+    int argc) {
+  const auto max_attributes_value =
+      options::GetMaxVectorAttributes().WasSet()
+          ? options::GetMaxVectorAttributes().GetValue()
+          : options::GetMaxAttributes().GetValue();
+
+  vmsdk::ArgsIterator itr{argv, argc};
+
+  bool skip_initial_scan = false;
+  VMSDK_ASSIGN_OR_RETURN(auto res,
+                         vmsdk::IsParamKeyMatch(kSkipInitialScan, false, itr));
+  if (res) {
+    skip_initial_scan = true;
+  }
+
+  absl::string_view schema_kw;
+  VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, schema_kw));
+  if (!absl::EqualsIgnoreCase(schema_kw, kSchemaParam)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected SCHEMA, got `", schema_kw, "`"));
+  }
+
+  absl::string_view add_kw;
+  VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, add_kw));
+  if (!absl::EqualsIgnoreCase(add_kw, "ADD")) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected ADD after SCHEMA, got `", add_kw, "`"));
+  }
+
+  if (!itr.HasNext()) {
+    return absl::InvalidArgumentError(
+        "SCHEMA ADD requires at least one field definition");
+  }
+
+  data_model::IndexSchema updated = existing_proto;
+  updated.set_skip_initial_scan(skip_initial_scan);
+
+  PerIndexTextParams schema_text_defaults;
+  schema_text_defaults.punctuation = existing_proto.punctuation().empty()
+                                         ? std::string(kDefaultPunctuation)
+                                         : existing_proto.punctuation();
+  schema_text_defaults.min_stem_size = existing_proto.min_stem_size() > 0
+                                           ? existing_proto.min_stem_size()
+                                           : kDefaultMinStemSize;
+  schema_text_defaults.with_offsets = existing_proto.with_offsets();
+  schema_text_defaults.no_stem = false;
+  schema_text_defaults.language = existing_proto.language();
+  schema_text_defaults.stop_words = {existing_proto.stop_words().begin(),
+                                     existing_proto.stop_words().end()};
+
+  std::set<absl::string_view> existing_aliases;
+  size_t text_fields_count = 0;
+  for (const auto &attr : existing_proto.attributes()) {
+    existing_aliases.insert(attr.alias());
+    if (attr.index().index_type_case() ==
+        data_model::Index::IndexTypeCase::kTextIndex) {
+      ++text_fields_count;
+    }
+  }
+
+  std::set<absl::string_view> new_aliases;
+  while (itr.HasNext()) {
+    absl::string_view attribute_identifier;
+    VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, attribute_identifier));
+    VMSDK_ASSIGN_OR_RETURN(auto attribute,
+                           ParseAttributeArgs(itr, attribute_identifier,
+                                              updated, schema_text_defaults),
+                           _.SetPrepend() << "Invalid field type for field `"
+                                          << attribute_identifier << "`: ");
+    if (existing_aliases.count(attribute->alias()) ||
+        new_aliases.count(attribute->alias())) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Attribute `", attribute->alias(), "` already exists in the index"));
+    }
+    VMSDK_RETURN_IF_ERROR(
+        vmsdk::VerifyRange(existing_aliases.size() + new_aliases.size() + 1,
+                           std::nullopt, max_attributes_value))
+        << "The maximum number of attributes cannot exceed "
+        << max_attributes_value << ".";
+    if (attribute->index().index_type_case() ==
+        data_model::Index::IndexTypeCase::kTextIndex) {
+      VMSDK_RETURN_IF_ERROR(vmsdk::VerifyRange(
+          text_fields_count + 1, std::nullopt, kMaxTextFieldsCount))
+          << "The maximum number of text fields cannot exceed "
+          << kMaxTextFieldsCount << ".";
+      ++text_fields_count;
+    }
+    new_aliases.insert(attribute->alias());
+  }
+  return updated;
+}
+
 std::unique_ptr<data_model::VectorIndex> FTCreateVectorParameters::ToProto()
     const {
   auto vector_index_proto = std::make_unique<data_model::VectorIndex>();

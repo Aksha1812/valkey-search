@@ -392,6 +392,41 @@ SchemaManager::CreateIndexSchema(
   return index_fingerprint_version;
 }
 
+absl::StatusOr<coordinator::IndexFingerprintVersion>
+SchemaManager::AlterIndexSchema(ValkeyModuleCtx *ctx,
+                                const data_model::IndexSchema &updated_proto) {
+  const int db_num = static_cast<int>(updated_proto.db_num());
+  const std::string &name = updated_proto.name();
+
+  if (coordinator_enabled_) {
+    if (!coordinator::MetadataManager::Instance()
+             .GetEntryContent(kSchemaManagerMetadataTypeName,
+                              coordinator::ObjName(db_num, name))
+             .ok()) {
+      return GenerateIndexNotFoundError(db_num, name);
+    }
+    auto any_proto = std::make_unique<google::protobuf::Any>();
+    any_proto->PackFrom(updated_proto);
+    return coordinator::MetadataManager::Instance().CreateEntry(
+        kSchemaManagerMetadataTypeName, coordinator::ObjName(db_num, name),
+        std::move(any_proto));
+  }
+
+  absl::MutexLock lock(&db_to_index_schemas_mutex_);
+  if (!LookupInternal(db_num, name).ok()) {
+    return GenerateIndexNotFoundError(db_num, name);
+  }
+  VMSDK_ASSIGN_OR_RETURN(auto old_schema,
+                         RemoveIndexSchemaInternal(db_num, name));
+  ValkeySearch::Instance().ScheduleUtilityTask(
+      [s = std::move(old_schema)]() mutable { s.reset(); });
+  VMSDK_RETURN_IF_ERROR(CreateIndexSchemaInternal(ctx, updated_proto));
+  coordinator::IndexFingerprintVersion ifv;
+  ifv.set_fingerprint(0);
+  ifv.set_version(0);
+  return ifv;
+}
+
 absl::StatusOr<std::shared_ptr<IndexSchema>> SchemaManager::GetIndexSchema(
     int db_num, absl::string_view name) const {
   absl::MutexLock lock(&db_to_index_schemas_mutex_);
