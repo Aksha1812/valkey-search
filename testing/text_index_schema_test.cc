@@ -12,6 +12,7 @@
 #include "src/index_schema.pb.h"
 #include "src/indexes/text.h"
 #include "src/indexes/text/text_index.h"
+#include "src/query/predicate.h"
 #include "src/utils/string_interning.h"
 #include "testing/common.h"
 #include "vmsdk/src/testing_infra/utils.h"
@@ -128,6 +129,49 @@ TEST_F(TextIndexSchemaTest, TotalDocLenDecrementsOnDelete) {
   // DeleteKeyData decrements total_doc_len internally
   schema->DeleteKeyData(key1);
   EXPECT_EQ(schema->GetMetadata().total_doc_len.load(), 0);
+}
+
+// The query reply path re-evaluates a text filter against a per-key TextIndex
+// (VerifyFilter). It must not do so while a concurrent write-worker deletes the
+// key, which extracts and frees that index. Evaluating under
+// EvaluateWithPerKeyTextIndex holds per_key_text_indexes_mutex_ across the
+// evaluation, serializing it with DeleteKeyData. Stress the two against each
+// other; ASAN/TSAN must stay clean. Without the lock this is a
+// heap-use-after-free (evaluation dereferences the freed index).
+TEST_F(TextIndexSchemaTest, ConcurrentDeleteDuringReplyEvaluation) {
+  for (int i = 0; i < 500; ++i) {
+    auto schema = CreateSchema();
+    data_model::TextIndex proto;
+    auto text = std::make_shared<Text>(proto, schema);
+
+    auto key = StringInternStore::Intern("doc");
+    ASSERT_TRUE(
+        schema->StageAttributeData(key, "hello world", 0, false, false).ok());
+    schema->CommitKeyData(key);
+
+    std::atomic<bool> go{false};
+    std::thread deleter([&] {
+      while (!go.load()) {
+      }
+      schema->DeleteKeyData(key);
+    });
+    std::thread reader([&] {
+      query::TermPredicate predicate(schema, /*field_mask=*/~0ULL, "hello",
+                                     /*exact=*/true);
+      while (!go.load()) {
+      }
+      schema->EvaluateWithPerKeyTextIndex(
+          key, [&](const TextIndex *text_index) {
+            if (text_index != nullptr) {
+              predicate.Evaluate(*text_index, key, /*require_positions=*/true);
+            }
+            return query::EvaluationResult(false);
+          });
+    });
+    go = true;
+    deleter.join();
+    reader.join();
+  }
 }
 
 TEST_F(TextIndexSchemaTest, DocLenWithMultipleFields) {
