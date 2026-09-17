@@ -206,16 +206,20 @@ FilterVerification VerifyFilter(
   };
 
   // For text predicates, evaluate using the text index instead of raw data.
+  // The evaluation must run while holding per_key_text_indexes_mutex_ so a
+  // concurrent write-worker (DeleteKeyData) cannot free the per-key index
+  // mid-evaluation.
   if (parameters.index_schema &&
       parameters.index_schema->GetTextIndexSchema()) {
-    const indexes::text::TextIndex *text_index =
-        parameters.index_schema->GetTextIndexSchema()->GetPerKeyTextIndex(
-            n.external_id, true);
-
-    PredicateEvaluator evaluator(
-        records, text_index, n.external_id,
-        parameters.filter_parse_results.query_operations);
-    EvaluationResult result = predicate->Evaluate(evaluator);
+    EvaluationResult result =
+        parameters.index_schema->GetTextIndexSchema()
+            ->EvaluateWithPerKeyTextIndex(
+                n.external_id, [&](const indexes::text::TextIndex *text_index) {
+                  PredicateEvaluator evaluator(
+                      records, text_index, n.external_id,
+                      parameters.filter_parse_results.query_operations);
+                  return predicate->Evaluate(evaluator);
+                });
     return recompute(result);
   }
   PredicateEvaluator evaluator(

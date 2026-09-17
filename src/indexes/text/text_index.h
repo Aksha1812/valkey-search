@@ -305,6 +305,21 @@ class TextIndexSchema {
   // Locking needs to be true if called outside of read phase of time sliced
   // mutex.
   const TextIndex *GetPerKeyTextIndex(const Key &key, bool lock);
+
+  // Runs `fn` with the per-key TextIndex for `key` while holding
+  // per_key_text_indexes_mutex_, so a concurrent DeleteKeyData cannot extract
+  // and destroy the index while `fn` evaluates against it. `fn` receives
+  // nullptr when the key has no text index. Callers outside the read phase of
+  // the time-sliced mutex must use this instead of holding the raw pointer
+  // returned by GetPerKeyTextIndex past the lookup.
+  template <typename Fn>
+  auto EvaluateWithPerKeyTextIndex(const Key &key, Fn &&fn) {
+    std::lock_guard<std::mutex> guard(per_key_text_indexes_mutex_);
+    auto it = per_key_text_indexes_.find(key);
+    const TextIndex *index =
+        it != per_key_text_indexes_.end() ? &it->second : nullptr;
+    return std::forward<Fn>(fn)(index);
+  }
 };
 
 }  // namespace valkey_search::indexes::text
