@@ -182,6 +182,101 @@ std::unique_ptr<vmsdk::ParamParser<SearchCommand>> ConstructSortByParser() {
         return absl::OkStatus();
       });
 }
+// FIELDS <count> <field>... restricts which attributes are rewritten.
+absl::Status ParseRewriteFields(vmsdk::ArgsIterator &itr,
+                                std::vector<std::string> &fields) {
+  uint32_t cnt{0};
+  VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, cnt));
+  if (static_cast<uint32_t>(itr.DistanceEnd()) < cnt) {
+    return absl::InvalidArgumentError(
+        "The count does not match the number of arguments provided for FIELDS");
+  }
+  fields.clear();
+  for (uint32_t i = 0; i < cnt; ++i) {
+    absl::string_view field;
+    VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, field));
+    fields.emplace_back(field);
+  }
+  return absl::OkStatus();
+}
+
+std::unique_ptr<vmsdk::ParamParser<SearchCommand>> ConstructHighlightParser() {
+  return std::make_unique<vmsdk::ParamParser<SearchCommand>>(
+      [](SearchCommand &parameters, vmsdk::ArgsIterator &itr) -> absl::Status {
+        parameters.highlight.enabled = true;
+        while (itr.HasNext()) {
+          VMSDK_ASSIGN_OR_RETURN(
+              auto res,
+              vmsdk::IsParamKeyMatch(query::kFieldsParam, false, itr));
+          if (res) {
+            VMSDK_RETURN_IF_ERROR(
+                ParseRewriteFields(itr, parameters.highlight.fields));
+            continue;
+          }
+          VMSDK_ASSIGN_OR_RETURN(
+              res, vmsdk::IsParamKeyMatch(query::kTagsParam, false, itr));
+          if (res) {
+            absl::string_view open_tag;
+            absl::string_view close_tag;
+            VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, open_tag));
+            VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, close_tag));
+            parameters.highlight.open_tag = std::string(open_tag);
+            parameters.highlight.close_tag = std::string(close_tag);
+            continue;
+          }
+          break;
+        }
+        return absl::OkStatus();
+      });
+}
+
+std::unique_ptr<vmsdk::ParamParser<SearchCommand>> ConstructSummarizeParser() {
+  return std::make_unique<vmsdk::ParamParser<SearchCommand>>(
+      [](SearchCommand &parameters, vmsdk::ArgsIterator &itr) -> absl::Status {
+        parameters.summarize.enabled = true;
+        while (itr.HasNext()) {
+          VMSDK_ASSIGN_OR_RETURN(
+              auto res,
+              vmsdk::IsParamKeyMatch(query::kFieldsParam, false, itr));
+          if (res) {
+            VMSDK_RETURN_IF_ERROR(
+                ParseRewriteFields(itr, parameters.summarize.fields));
+            continue;
+          }
+          VMSDK_ASSIGN_OR_RETURN(
+              res, vmsdk::IsParamKeyMatch(query::kFragsParam, false, itr));
+          if (res) {
+            VMSDK_RETURN_IF_ERROR(
+                vmsdk::ParseParamValue(itr, parameters.summarize.frags));
+            if (parameters.summarize.frags == 0) {
+              return absl::InvalidArgumentError("FRAGS must be positive");
+            }
+            continue;
+          }
+          VMSDK_ASSIGN_OR_RETURN(
+              res, vmsdk::IsParamKeyMatch(query::kLenParam, false, itr));
+          if (res) {
+            VMSDK_RETURN_IF_ERROR(
+                vmsdk::ParseParamValue(itr, parameters.summarize.len));
+            if (parameters.summarize.len == 0) {
+              return absl::InvalidArgumentError("LEN must be positive");
+            }
+            continue;
+          }
+          VMSDK_ASSIGN_OR_RETURN(
+              res, vmsdk::IsParamKeyMatch(query::kSeparatorParam, false, itr));
+          if (res) {
+            absl::string_view separator;
+            VMSDK_RETURN_IF_ERROR(vmsdk::ParseParamValue(itr, separator));
+            parameters.summarize.separator = std::string(separator);
+            continue;
+          }
+          break;
+        }
+        return absl::OkStatus();
+      });
+}
+
 std::unique_ptr<vmsdk::ParamParser<SearchCommand>> ConstructReturnParser() {
   return std::make_unique<vmsdk::ParamParser<SearchCommand>>(
       [](SearchCommand &parameters, vmsdk::ArgsIterator &itr) -> absl::Status {
@@ -264,6 +359,8 @@ vmsdk::KeyValueParser<SearchCommand> CreateSearchParser() {
   parser.AddParamParser(query::kWithScoresParam,
                         GENERATE_FLAG_PARSER(SearchCommand, with_scores));
   parser.AddParamParser(query::kReturnParam, ConstructReturnParser());
+  parser.AddParamParser(query::kHighlightParam, ConstructHighlightParser());
+  parser.AddParamParser(query::kSummarizeParam, ConstructSummarizeParser());
   parser.AddParamParser(query::kSortByParam, ConstructSortByParser());
   parser.AddParamParser(query::kParamsParam, ConstructParamsParser());
   parser.AddParamParser(query::kInorder,
@@ -283,8 +380,34 @@ static vmsdk::KeyValueParser<SearchCommand> SearchParser = CreateSearchParser();
 
 }  // namespace
 
+// HIGHLIGHT and SUMMARIZE only ever rewrite TEXT fields. Redis validates that a
+// FIELDS name exists but not that it is highlightable, so naming a TAG field is
+// silently ignored there; an impossible request is rejected here instead.
+absl::Status SearchCommand::ValidateRewriteFields(
+    const std::vector<std::string> &fields, absl::string_view clause) const {
+  for (const auto &field : fields) {
+    VMSDK_ASSIGN_OR_RETURN(
+        auto index, index_schema->GetIndex(field),
+        _ << "Unknown field `" << field << "` in " << clause << " FIELDS: ");
+    if (index->GetIndexerType() != indexes::IndexerType::kText) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Field `", field, "` in ", clause, " FIELDS is not a TEXT field"));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status SearchCommand::PostParseQueryString() {
   VMSDK_RETURN_IF_ERROR(query::SearchParameters::PostParseQueryString());
+
+  if (highlight.enabled) {
+    VMSDK_RETURN_IF_ERROR(
+        ValidateRewriteFields(highlight.fields, query::kHighlightParam));
+  }
+  if (summarize.enabled) {
+    VMSDK_RETURN_IF_ERROR(
+        ValidateRewriteFields(summarize.fields, query::kSummarizeParam));
+  }
 
   // The vector score reply field (KNN `AS`, or the default __<field>_score) is
   // a synthesized field. If it collides with a declared schema attribute,

@@ -9,7 +9,10 @@
 #define VALKEYSEARCH_SRC_COMMANDS_FT_SEARCH_PARSER_H_
 
 #include <optional>
+#include <string>
+#include <vector>
 
+#include "absl/strings/string_view.h"
 #include "src/commands/commands.h"
 #include "src/query/search.h"
 #include "vmsdk/src/valkey_module_api/valkey_module.h"
@@ -31,6 +34,8 @@ struct SearchCommand : public QueryCommand {
   void SendReply(ValkeyModuleCtx *ctx,
                  query::SearchResult &search_result) override;
   absl::Status PostParseQueryString() override;
+  absl::Status ValidateRewriteFields(const std::vector<std::string> &fields,
+                                     absl::string_view clause) const;
   // By default, FT.SEARCH does not require complete results and can be
   // optimized with LIMIT based trimming. Implement the correct logic here to
   // return true when those clauses are present.
