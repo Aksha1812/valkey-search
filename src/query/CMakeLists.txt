@@ -80,6 +80,15 @@ target_link_libraries(fanout PUBLIC string_interning)
 target_link_libraries(fanout PUBLIC vmsdklib)
 target_link_libraries(fanout PUBLIC valkey_module)
 
+set(SRCS_HIGHLIGHT ${CMAKE_CURRENT_LIST_DIR}/highlight.cc
+                   ${CMAKE_CURRENT_LIST_DIR}/highlight.h)
+
+valkey_search_add_static_library(highlight "${SRCS_HIGHLIGHT}")
+target_include_directories(highlight PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+target_link_libraries(highlight PUBLIC predicate_header)
+target_link_libraries(highlight PUBLIC text)
+target_link_libraries(highlight PUBLIC vmsdklib)
+
 set(SRCS_RESPONSE_GENERATOR ${CMAKE_CURRENT_LIST_DIR}/response_generator.cc
                             ${CMAKE_CURRENT_LIST_DIR}/response_generator.h)
 
