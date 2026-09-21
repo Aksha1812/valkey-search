@@ -518,6 +518,23 @@ size_t Tag::GetTagValueDocCount(absl::string_view value) const {
   return count;
 }
 
+std::vector<std::string> Tag::GetTagValues() const {
+  absl::MutexLock lock(&index_mutex_);
+  std::vector<std::string> values;
+  values.reserve(raxSize(tree_));
+  raxIterator it;
+  raxStart(&it, tree_);
+  unsigned char empty = 0;
+  raxSeekSubTree(&it, &empty, 0);
+  while (raxNext(&it)) {
+    if (it.data) {
+      values.emplace_back(reinterpret_cast<const char *>(it.key), it.key_len);
+    }
+  }
+  raxStop(&it);
+  return values;
+}
+
 size_t Tag::GetPrefixMatchDocCount(absl::string_view prefix_value,
                                    BorrowedInternedStringPtr key) const {
   if (prefix_value.empty() || prefix_value.back() != '*') return 0;

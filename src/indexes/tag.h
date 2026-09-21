@@ -159,6 +159,11 @@ class Tag : public IndexBase {
   char GetSeparator() const { return separator_; }
   bool IsCaseSensitive() const { return case_sensitive_; }
 
+  // Distinct indexed tag values, in rax (lexicographic) order. Values are
+  // normalized, i.e. lowercased unless the field is case-sensitive.
+  std::vector<std::string> GetTagValues() const
+      ABSL_LOCKS_EXCLUDED(index_mutex_);
+
   // Number of documents carrying tag value `value` (0 if the value is absent).
   // `value` is normalized (lowercased unless case-sensitive) before lookup, so
   // callers pass the raw query value. Feeds the BM25 IDF document frequency

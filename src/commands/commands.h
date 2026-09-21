@@ -24,6 +24,7 @@ enum FTCommand {
   kList,
   kSearch,
   kDebug,
+  kTagVals,
 };
 
 constexpr absl::string_view kSearchCategory{"@search"};
@@ -40,6 +41,7 @@ constexpr absl::string_view kInfoCommand{"FT.INFO"};
 constexpr absl::string_view kListCommand{"FT._LIST"};
 constexpr absl::string_view kSearchCommand{"FT.SEARCH"};
 constexpr absl::string_view kDebugCommand{"FT._DEBUG"};
+constexpr absl::string_view kTagValsCommand{"FT.TAGVALS"};
 constexpr absl::string_view kAggregateCommand{"FT.AGGREGATE"};
 constexpr absl::string_view kInternalUpdateCommand{"FT.INTERNAL_UPDATE"};
 
@@ -55,6 +57,8 @@ const absl::flat_hash_set<absl::string_view> kInfoCmdPermissions{
     kSearchCategory, kReadCategory, kFastCategory};
 const absl::flat_hash_set<absl::string_view> kListCmdPermissions{
     kSearchCategory, kReadCategory, kSlowCategory, kAdminCategory};
+const absl::flat_hash_set<absl::string_view> kTagValsCmdPermissions{
+    kSearchCategory, kReadCategory, kSlowCategory, kDangerousCategory};
 const absl::flat_hash_set<absl::string_view> kDebugCmdPermissions{
     kSearchCategory, kSlowCategory, kAdminCategory, kDangerousCategory};
 
@@ -78,6 +82,8 @@ absl::Status FTSearchCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
                          int argc);
 absl::Status FTDebugCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
                         int argc);
+absl::Status FTTagValsCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
+                          int argc);
 absl::Status FTAggregateCmd(ValkeyModuleCtx *ctx, ValkeyModuleString **argv,
                             int argc);
 absl::Status FTInternalUpdateCmd(ValkeyModuleCtx *ctx,

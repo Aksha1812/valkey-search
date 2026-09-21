@@ -12,6 +12,7 @@ set(SRCS_COMMANDS
     ${CMAKE_CURRENT_LIST_DIR}/ft_internal_update.cc
     ${CMAKE_CURRENT_LIST_DIR}/ft_list.cc
     ${CMAKE_CURRENT_LIST_DIR}/ft_search.cc
+    ${CMAKE_CURRENT_LIST_DIR}/ft_tagvals.cc
     ${CMAKE_CURRENT_LIST_DIR}/commands.h
     ${CMAKE_CURRENT_LIST_DIR}/commands.cc
     ${CMAKE_CURRENT_LIST_DIR}/ft_search.h)
@@ -24,6 +25,7 @@ target_link_libraries(commands PUBLIC index_schema)
 target_link_libraries(commands PUBLIC index_schema_cc_proto)
 target_link_libraries(commands PUBLIC metrics)
 target_link_libraries(commands PUBLIC schema_manager)
+target_link_libraries(commands PUBLIC tag)
 target_link_libraries(commands PUBLIC valkey_search)
 target_link_libraries(commands PUBLIC vector_base)
 target_link_libraries(commands PUBLIC fanout)

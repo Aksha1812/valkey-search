@@ -201,6 +201,38 @@ TEST_F(TagIndexTest, GetTagValueDocCountReflectsRemoval) {
   EXPECT_EQ(index->GetTagValueDocCount("red"), 0u);
 }
 
+TEST_F(TagIndexTest, GetTagValuesDistinctAndNormalized) {
+  EXPECT_TRUE(index->AddRecord("d1", "Red, blue").value());
+  EXPECT_TRUE(index->AddRecord("d2", "RED").value());
+  EXPECT_TRUE(index->AddRecord("d3", "  green  ").value());
+  EXPECT_THAT(index->GetTagValues(),
+              testing::UnorderedElementsAre("red", "blue", "green"));
+}
+
+TEST_F(TagIndexTest, GetTagValuesEmptyIndex) {
+  EXPECT_THAT(index->GetTagValues(), testing::IsEmpty());
+}
+
+// A value whose last document goes away loses its rax slot, so it stops being
+// reported.
+TEST_F(TagIndexTest, GetTagValuesReflectsRemoval) {
+  EXPECT_TRUE(index->AddRecord("d1", "red,blue").value());
+  EXPECT_TRUE(index->AddRecord("d2", "blue").value());
+  EXPECT_TRUE(index->RemoveRecord("d1").value());
+  EXPECT_THAT(index->GetTagValues(), testing::UnorderedElementsAre("blue"));
+}
+
+TEST_F(TagIndexTest, GetTagValuesCaseSensitive) {
+  data_model::TagIndex proto;
+  proto.set_separator(",");
+  proto.set_case_sensitive(true);
+  IndexTeser<Tag, data_model::TagIndex> cs_index(proto);
+  EXPECT_TRUE(cs_index.AddRecord("d1", "Red").value());
+  EXPECT_TRUE(cs_index.AddRecord("d2", "RED").value());
+  EXPECT_THAT(cs_index.GetTagValues(),
+              testing::UnorderedElementsAre("Red", "RED"));
+}
+
 TEST_F(TagIndexTest, PrefixSearchHappyTest) {
   EXPECT_TRUE(index->AddRecord("doc1", "disagree").value());
   EXPECT_TRUE(index->AddRecord("doc2", "disappear").value());

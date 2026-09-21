@@ -73,6 +73,13 @@ vmsdk::module::Options options = {
                 .cmd_func = &vmsdk::CreateCommand<valkey_search::FTListCmd>,
             },
             {
+                .cmd_name = valkey_search::kTagValsCommand,
+                .permissions = ACLPermissionFormatter(
+                    valkey_search::kTagValsCmdPermissions),
+                .flags = {vmsdk::module::kReadOnlyFlag},
+                .cmd_func = &vmsdk::CreateCommand<valkey_search::FTTagValsCmd>,
+            },
+            {
                 .cmd_name = valkey_search::kSearchCommand,
                 .permissions = ACLPermissionFormatter(
                     valkey_search::kSearchCmdPermissions),
