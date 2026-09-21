@@ -286,9 +286,17 @@ void SerializeNonVectorNeighbors(ValkeyModuleCtx *ctx,
   }
 }
 
-// Redis case-folds a sortable field's sort value unless UNF was given. Folds
-// case only: an accent survives, so it still compares above ASCII. Avoids
-// allocating when both sides are ASCII, which is the common case.
+// Normalizes a sort value the same way the text pipeline normalizes for
+// matching, so sorting and matching agree on when two strings are the same.
+// Single point of truth: when the Language strategy lands this becomes
+// language.NormalizeInPlace(), which also makes folding locale-aware.
+void NormalizeForSortInPlace(std::string &value) {
+  indexes::text::UnicodeNormalizer::CaseFoldInPlace(value);
+}
+
+// Compares as if both sides had been normalized, without allocating when both
+// are ASCII -- the common case. The ASCII branch must agree with
+// NormalizeForSortInPlace above.
 expr::Ordering CaseFoldedCompare(absl::string_view a, absl::string_view b) {
   if (absl::c_all_of(a, absl::ascii_isascii) &&
       absl::c_all_of(b, absl::ascii_isascii)) {
@@ -308,8 +316,8 @@ expr::Ordering CaseFoldedCompare(absl::string_view a, absl::string_view b) {
   }
   std::string folded_a(a);
   std::string folded_b(b);
-  indexes::text::UnicodeNormalizer::CaseFoldInPlace(folded_a);
-  indexes::text::UnicodeNormalizer::CaseFoldInPlace(folded_b);
+  NormalizeForSortInPlace(folded_a);
+  NormalizeForSortInPlace(folded_b);
   if (folded_a == folded_b) {
     return expr::Ordering::kEQUAL;
   }
