@@ -81,10 +81,34 @@ constexpr absl::string_view kSlop{"SLOP"};
 constexpr absl::string_view kScorer{"SCORER"};
 constexpr absl::string_view kInorder{"INORDER"};
 constexpr absl::string_view kVerbatim{"VERBATIM"};
+constexpr absl::string_view kHighlightParam{"HIGHLIGHT"};
+constexpr absl::string_view kSummarizeParam{"SUMMARIZE"};
+constexpr absl::string_view kFieldsParam{"FIELDS"};
+constexpr absl::string_view kTagsParam{"TAGS"};
+constexpr absl::string_view kFragsParam{"FRAGS"};
+constexpr absl::string_view kLenParam{"LEN"};
+constexpr absl::string_view kSeparatorParam{"SEPARATOR"};
 
 struct LimitParameter {
   uint64_t first_index{0};
   uint64_t number{10};
+};
+
+// HIGHLIGHT and SUMMARIZE rewrite the TEXT fields of a reply. An empty `fields`
+// means every TEXT attribute of the index.
+struct HighlightParameter {
+  bool enabled{false};
+  std::vector<std::string> fields;
+  std::string open_tag{"<b>"};
+  std::string close_tag{"</b>"};
+};
+
+struct SummarizeParameter {
+  bool enabled{false};
+  std::vector<std::string> fields;
+  uint32_t frags{3};
+  uint32_t len{20};
+  std::string separator{"... "};
 };
 
 struct ReturnAttribute {
@@ -222,6 +246,8 @@ struct SearchParameters {
   bool inorder{false};
   std::optional<uint32_t> slop;
   bool verbatim{false};
+  HighlightParameter highlight;
+  SummarizeParameter summarize;
   // Seeded from the `default-scorer` config; an explicit SCORER overrides it.
   indexes::scoring::ScorerType scorer{static_cast<indexes::scoring::ScorerType>(
       options::GetDefaultScorer().GetValue())};
