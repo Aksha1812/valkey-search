@@ -62,26 +62,15 @@ constexpr absl::string_view kFixedScoreInfoSegment =
     "+default_score\r\n1\r\n+score_field\r\n+\r\n";
 constexpr absl::string_view kLegacyScoreInfoSegment =
     "+default_score\r\n$1\r\n1\r\n";
-// Emitted only at 1.3.0 and later. SORTABLE is reported for every non-vector
-// attribute and UNF only for TAG and TEXT, so a tag or text entry grows by four
-// elements and a numeric one by two. No case below declares either flag.
-constexpr absl::string_view kSortableSegment = "+SORTABLE\r\n+0\r\n";
-constexpr absl::string_view kUnfSegment = "+UNF\r\n+0\r\n";
 
 // Rewrites a fixed-shape expectation into the pre-1.3.0 shape. Replies that do
 // not contain an index_definition block (error cases) are returned unchanged.
-// The SORTABLE and UNF pairs are gated at the same version, so they are dropped
-// here too and the affected attribute entry lengths restored.
 std::string ToLegacyScoreInfoShape(absl::string_view fixed) {
   if (!absl::StrContains(fixed, kFixedScoreInfoSegment)) {
     return std::string(fixed);
   }
   return absl::StrReplaceAll(
       fixed, {{"+index_definition\r\n*8\r\n", "+index_definition\r\n*6\r\n"},
-              {"*18\r\n+identifier", "*14\r\n+identifier"},
-              {"*12\r\n+identifier", "*10\r\n+identifier"},
-              {kSortableSegment, ""},
-              {kUnfSegment, ""},
               {kFixedScoreInfoSegment, kLegacyScoreInfoSegment}});
 }
 

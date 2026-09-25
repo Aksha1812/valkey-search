@@ -7,7 +7,6 @@
 #include "src/attribute.h"
 
 #include "src/index_schema.h"
-#include "src/valkey_search_options.h"
 
 namespace valkey_search {
 
@@ -26,26 +25,17 @@ int Attribute::RespondWithInfo(ValkeyModuleCtx* ctx,
   // only where it can mean something: Redis rejects SORTABLE on a vector, and
   // UNF suppresses a normalization that a number never has.
   const auto indexer_type = index_->GetIndexerType();
-  const bool sortable_applies = !indexes::IsVectorIndex(indexer_type);
-  const bool unf_applies = indexer_type == indexes::IndexerType::kTag ||
-                           indexer_type == indexes::IndexerType::kText;
-  added_fields += VALKEY_SEARCH_COMPATIBILITY_FIX(
-      1, 3, 0, "ft_info_sortable_flags",
-      [&]() {
-        int emitted = 0;
-        if (sortable_applies) {
-          ValkeyModule_ReplyWithSimpleString(ctx, "SORTABLE");
-          ValkeyModule_ReplyWithSimpleString(ctx, sortable_ ? "1" : "0");
-          emitted += 2;
-        }
-        if (unf_applies) {
-          ValkeyModule_ReplyWithSimpleString(ctx, "UNF");
-          ValkeyModule_ReplyWithSimpleString(ctx, unf_ ? "1" : "0");
-          emitted += 2;
-        }
-        return emitted;
-      },
-      []() { return 0; });
+  if (!indexes::IsVectorIndex(indexer_type)) {
+    ValkeyModule_ReplyWithSimpleString(ctx, "SORTABLE");
+    ValkeyModule_ReplyWithSimpleString(ctx, sortable_ ? "1" : "0");
+    added_fields += 2;
+  }
+  if (indexer_type == indexes::IndexerType::kTag ||
+      indexer_type == indexes::IndexerType::kText) {
+    ValkeyModule_ReplyWithSimpleString(ctx, "UNF");
+    ValkeyModule_ReplyWithSimpleString(ctx, unf_ ? "1" : "0");
+    added_fields += 2;
+  }
   ValkeyModule_ReplySetArrayLength(ctx, added_fields + 6);
   return 1;
 }

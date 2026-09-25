@@ -4,19 +4,14 @@ Redis reports these as bare tokens with no value, which no generic key/value
 parser can read, so they are reported here as pairs like CASESENSITIVE. SORTABLE
 is reported for every non-vector attribute and UNF only for TAG and TEXT, since
 Redis rejects SORTABLE on a vector and UNF suppresses a normalization a number
-never has. That changes the reply shape, so it is gated behind
-`search.emulate-release` >= 1.3.0 (see COMPATIBILITY.md). These tests run under
-debug-mode so the ceiling can be lifted to the (as yet unreleased) fix version.
+never has.
 """
 
 import pytest
 import valkey
 from valkey.client import Valkey
-from valkey_search_test_case import ValkeySearchTestCaseDebugMode
+from valkey_search_test_case import ValkeySearchTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker
-
-FIX_RELEASE = "1.3.0"
-LEGACY_RELEASE = "1.0.0"
 
 
 def attribute_of(client, index_name, alias):
@@ -30,16 +25,9 @@ def attribute_of(client, index_name, alias):
     raise AssertionError(f"attribute {alias} not found in FT.INFO")
 
 
-class TestFtInfoSortable(ValkeySearchTestCaseDebugMode):
-    def _client(self, emulate_release=FIX_RELEASE) -> Valkey:
-        client: Valkey = self.server.get_new_client()
-        assert (
-            client.execute_command(
-                f"CONFIG SET search.emulate-release {emulate_release}"
-            )
-            == b"OK"
-        )
-        return client
+class TestFtInfoSortable(ValkeySearchTestCaseBase):
+    def _client(self) -> Valkey:
+        return self.server.get_new_client()
 
     def _create(self, client):
         assert client.execute_command(
@@ -90,15 +78,6 @@ class TestFtInfoSortable(ValkeySearchTestCaseDebugMode):
         attributes = info[info.index(b"attributes") + 1]
         for attribute in attributes:
             assert len(attribute) % 2 == 0, attribute
-
-    def test_fields_absent_before_fix_release(self):
-        client = self._client(LEGACY_RELEASE)
-        self._create(client)
-
-        for alias in ("plain", "sorted", "unsorted_form", "amount", "vec"):
-            attribute = attribute_of(client, "idx", alias)
-            assert b"SORTABLE" not in attribute
-            assert b"UNF" not in attribute
 
     def test_attribute_pairs_survive_a_reload(self):
         """The flags are persisted on the attribute, not recomputed from argv."""
