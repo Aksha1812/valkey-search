@@ -23,10 +23,7 @@ namespace valkey_search {
 using AttributePosition = uint16_t;
 class IndexSchema;
 
-// Declarations carried from FT.CREATE that do not affect indexing or query
-// behavior. They are reported by FT.INFO, and `sortable` additionally gates the
-// case-folded ordering tracked by issue #1453: Redis case-folds the sort value
-// of a SORTABLE field unless UNF is also given.
+// Per-attribute FT.CREATE declarations, reported by FT.INFO.
 struct AttributeOptions {
   bool sortable{false};
   bool unf{false};
