@@ -22,17 +22,26 @@ namespace valkey_search {
 
 using AttributePosition = uint16_t;
 class IndexSchema;
+
+// Declarations carried from FT.CREATE that do not affect indexing or query
+// behavior. They are reported by FT.INFO, and `sortable` additionally gates the
+// case-folded ordering tracked by issue #1453: Redis case-folds the sort value
+// of a SORTABLE field unless UNF is also given.
+struct AttributeOptions {
+  bool sortable{false};
+  bool unf{false};
+};
+
 class Attribute {
  public:
   Attribute(absl::string_view alias, absl::string_view identifier,
             std::shared_ptr<indexes::IndexBase> index, uint16_t pos,
-            bool sortable = false, bool unf = false)
+            AttributeOptions options = {})
       : alias_(alias),
         identifier_(identifier),
         index_(index),
         position_(pos),
-        sortable_(sortable),
-        unf_(unf) {}
+        options_(options) {}
   inline const std::string& GetAlias() const { return alias_; }
   inline const std::string& GetIdentifier() const { return identifier_; }
   std::shared_ptr<indexes::IndexBase> GetIndex() const { return index_; }
@@ -41,8 +50,8 @@ class Attribute {
     attribute_proto->set_alias(alias_);
     attribute_proto->set_identifier(identifier_);
     attribute_proto->set_allocated_index(index_->ToProto().release());
-    attribute_proto->set_sortable(sortable_);
-    attribute_proto->set_unf(unf_);
+    attribute_proto->set_sortable(options_.sortable);
+    attribute_proto->set_unf(options_.unf);
     return attribute_proto;
   }
 
@@ -66,8 +75,7 @@ class Attribute {
   std::shared_ptr<indexes::IndexBase> index_;
   AttributePosition position_{
       UINT16_MAX};  // The attribute position during creation.
-  bool sortable_{false};
-  bool unf_{false};
+  AttributeOptions options_;
 };
 
 }  // namespace valkey_search

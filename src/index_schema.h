@@ -173,7 +173,7 @@ class IndexSchema : public KeyspaceEventSubscription,
   absl::Status AddIndex(absl::string_view attribute_alias,
                         absl::string_view identifier,
                         std::shared_ptr<indexes::IndexBase> index,
-                        bool sortable = false, bool unf = false);
+                        AttributeOptions options = {});
 
   void RespondWithInfo(ValkeyModuleCtx *ctx) const;
 

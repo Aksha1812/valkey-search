@@ -27,13 +27,13 @@ int Attribute::RespondWithInfo(ValkeyModuleCtx* ctx,
   const auto indexer_type = index_->GetIndexerType();
   if (!indexes::IsVectorIndex(indexer_type)) {
     ValkeyModule_ReplyWithSimpleString(ctx, "SORTABLE");
-    ValkeyModule_ReplyWithSimpleString(ctx, sortable_ ? "1" : "0");
+    ValkeyModule_ReplyWithSimpleString(ctx, options_.sortable ? "1" : "0");
     added_fields += 2;
   }
   if (indexer_type == indexes::IndexerType::kTag ||
       indexer_type == indexes::IndexerType::kText) {
     ValkeyModule_ReplyWithSimpleString(ctx, "UNF");
-    ValkeyModule_ReplyWithSimpleString(ctx, unf_ ? "1" : "0");
+    ValkeyModule_ReplyWithSimpleString(ctx, options_.unf ? "1" : "0");
     added_fields += 2;
   }
   ValkeyModule_ReplySetArrayLength(ctx, added_fields + 6);

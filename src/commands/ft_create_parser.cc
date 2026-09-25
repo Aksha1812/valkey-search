@@ -60,6 +60,8 @@ const absl::string_view kScoreParam{"SCORE"};
 constexpr absl::string_view kSchemaParam{"SCHEMA"};
 constexpr absl::string_view kSkipInitialScan("SKIPINITIALSCAN");
 constexpr absl::string_view kNoHlParam{"NOHL"};
+constexpr absl::string_view kSortableParam{"SORTABLE"};
+constexpr absl::string_view kUnfParam{"UNF"};
 constexpr size_t kDefaultAttributesCountLimit{1000};
 constexpr int kDefaultDimensionsCountLimit{32768};
 constexpr int kDefaultPrefixesCountLimit{8};
@@ -621,21 +623,11 @@ absl::StatusOr<data_model::Attribute *> ParseAttributeArgs(
       break;
   }
 
-  // SORTABLE, and an UNF that follows it, only affect what FT.INFO reports
-  if (itr.DistanceEnd() > 0) {
-    auto next_arg = itr.Get();
-    if (next_arg.ok()) {
-      absl::string_view order_str = vmsdk::ToStringView(next_arg.value());
-      if (absl::EqualsIgnoreCase(order_str, "SORTABLE")) {
-        itr.Next();
-        attribute_proto->set_sortable(true);
-        auto unf_arg = itr.Get();
-        if (unf_arg.ok() && absl::EqualsIgnoreCase(
-                                vmsdk::ToStringView(unf_arg.value()), "UNF")) {
-          itr.Next();
-          attribute_proto->set_unf(true);
-        }
-      }
+  // UNF is only recognized directly after SORTABLE, as in Redis
+  if (vmsdk::IsParamNext(kSortableParam, itr)) {
+    attribute_proto->set_sortable(true);
+    if (vmsdk::IsParamNext(kUnfParam, itr)) {
+      attribute_proto->set_unf(true);
     }
   }
 
